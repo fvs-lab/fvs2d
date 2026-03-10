@@ -2,6 +2,8 @@
 
 FVS v2 daemon exposes branches via FUSE.
 
+> (WIP) Not fully implemented.
+
 ## Build
 
 Default build (no FUSE backend):
