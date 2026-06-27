@@ -3,8 +3,9 @@
 package main
 
 /*
-#cgo CFLAGS: -DFUSE_USE_VERSION=35 -I${SRCDIR} -I${SRCDIR}/../../../libfuse/include
-#cgo LDFLAGS: -l:libfuse3.so.3 -lpthread -ldl
+#cgo pkg-config: fuse3
+#cgo CFLAGS: -DFUSE_USE_VERSION=35 -I${SRCDIR}
+#cgo LDFLAGS: -lpthread -ldl
 
 #include <errno.h>
 #include <stdlib.h>
@@ -339,18 +340,34 @@ func main() {
 		os.Exit(1)
 	}
 
-	argv := []*C.char{C.CString("fvs2d"), C.CString("-f")}
+	// fuse_session_new() only accepts low-level options (e.g. -d). The
+	// mountpoint is passed separately to fuse_session_mount() below, and -f
+	// (foreground) is a high-level cmdline flag it does not understand: passing
+	// either here makes fuse_opt_parse fail with "unknown option". We run the
+	// session loop in this process, so foreground is implicit.
+	argv := []*C.char{C.CString("fvs2d")}
 	if debug {
 		argv = append(argv, C.CString("-d"))
 	}
-	argv = append(argv, C.CString(mountPoint))
 	defer func() {
 		for _, a := range argv {
 			C.free(unsafe.Pointer(a))
 		}
 	}()
 
-	args := C.struct_fuse_args{argc: C.int(len(argv)), argv: &argv[0], allocated: 0}
+	// The fuse_args.argv field must point at C memory. Building it from a Go
+	// slice (&argv[0]) hands C a Go pointer to memory holding other pointers,
+	// which the cgo pointer checker rejects at runtime (panic). Copy the vector
+	// into a C-allocated array so nothing Go-managed crosses the boundary.
+	cArgvSize := C.size_t(len(argv)) * C.size_t(unsafe.Sizeof(uintptr(0)))
+	cArgv := (**C.char)(C.malloc(cArgvSize))
+	defer C.free(unsafe.Pointer(cArgv))
+	cArgvSlice := unsafe.Slice(cArgv, len(argv))
+	for i, a := range argv {
+		cArgvSlice[i] = a
+	}
+
+	args := C.struct_fuse_args{argc: C.int(len(argv)), argv: cArgv, allocated: 0}
 
 	se := C.fvs_fuse_session_new(&args, C.fvs_ops(), C.size_t(C.sizeof_struct_fuse_lowlevel_ops), nil)
 	if se == nil {
