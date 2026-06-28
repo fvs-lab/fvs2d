@@ -414,3 +414,43 @@ func (o *overlay) remove(parent uint64, name string) syscall.Errno {
 	}
 	return 0
 }
+
+func (o *overlay) rename(parent uint64, name string, newParent uint64, newName string) syscall.Errno {
+	if !o.writable() {
+		return syscall.EROFS
+	}
+	pp, ok := o.pathOf(parent)
+	if !ok {
+		return syscall.ENOENT
+	}
+	np, ok := o.pathOf(newParent)
+	if !ok {
+		return syscall.ENOENT
+	}
+	src := joinPath(pp, name)
+	dst := joinPath(np, newName)
+	if err := o.copyUp(src); err != nil {
+		return syscall.EIO
+	}
+	srcUp := o.upperJoin(src)
+	if _, err := os.Lstat(srcUp); err != nil {
+		if o.lowerNode(src) != nil {
+			return syscall.EXDEV
+		}
+		return syscall.ENOENT
+	}
+	if err := os.MkdirAll(o.upperJoin(np), 0o755); err != nil {
+		return syscall.EIO
+	}
+	o.clearWhiteout(np, newName)
+	if err := os.Rename(srcUp, o.upperJoin(dst)); err != nil {
+		return syscall.EIO
+	}
+	if o.lowerNode(src) != nil {
+		wh := o.upperJoin(joinPath(pp, whiteoutPrefix+name))
+		if f, err := os.OpenFile(wh, os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
+			_ = f.Close()
+		}
+	}
+	return 0
+}

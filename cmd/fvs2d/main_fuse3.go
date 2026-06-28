@@ -13,8 +13,12 @@ package main
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <time.h>
+#include <unistd.h>
 
 #include "fuse_lowlevel.h"
+
+static time_t g_mtime;
 
 // The system libfuse3 in this environment does not export fuse_session_new_versioned().
 // Force the non-versioned entrypoint (fuse_session_new) and wrap it for cgo.
@@ -46,11 +50,13 @@ extern long     fvs_write(uint64_t ino, char* buf, size_t size, off_t off, int* 
 extern int      fvs_mkdir(uint64_t parent, char* name, uint32_t mode, uint64_t* out_ino);
 extern int      fvs_remove(uint64_t parent, char* name);
 extern int      fvs_truncate(uint64_t ino, int64_t size);
+extern int      fvs_rename(uint64_t parent, char* name, uint64_t newparent, char* newname);
 
 static void ll_init(void *userdata, struct fuse_conn_info *conn)
 {
 	(void)userdata;
 	(void)conn;
+	g_mtime = time(NULL);
 }
 
 static void ll_lookup(fuse_req_t req, fuse_ino_t parent, const char *name)
@@ -74,6 +80,9 @@ static void ll_lookup(fuse_req_t req, fuse_ino_t parent, const char *name)
 	e.attr.st_ino = ino;
 	e.attr.st_mode = mode;
 	e.attr.st_nlink = nlink;
+	e.attr.st_uid = getuid();
+	e.attr.st_gid = getgid();
+	e.attr.st_atime = e.attr.st_mtime = e.attr.st_ctime = g_mtime;
 	e.attr.st_size = (off_t)size;
 	fuse_reply_entry(req, &e);
 }
@@ -92,6 +101,9 @@ static void ll_getattr(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi
 	st.st_ino = ino;
 	st.st_mode = mode;
 	st.st_nlink = nlink;
+	st.st_uid = getuid();
+	st.st_gid = getgid();
+	st.st_atime = st.st_mtime = st.st_ctime = g_mtime;
 	st.st_size = (off_t)size;
 	fuse_reply_attr(req, &st, 1.0);
 }
@@ -163,7 +175,6 @@ static void ll_open(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi)
 	if (wr && (fi->flags & O_TRUNC)) {
 		fvs_truncate((uint64_t)ino, 0);
 	}
-	fi->direct_io = 1;
 	fuse_reply_open(req, fi);
 }
 
@@ -226,6 +237,9 @@ static void reply_new_entry(fuse_req_t req, uint64_t ino)
 	e.attr.st_ino = ino;
 	e.attr.st_mode = mode;
 	e.attr.st_nlink = nlink;
+	e.attr.st_uid = getuid();
+	e.attr.st_gid = getgid();
+	e.attr.st_atime = e.attr.st_mtime = e.attr.st_ctime = g_mtime;
 	e.attr.st_size = (off_t)size;
 	fuse_reply_entry(req, &e);
 }
@@ -252,8 +266,10 @@ static void ll_create(fuse_req_t req, fuse_ino_t parent, const char *name, mode_
 	e.attr.st_ino = ino;
 	e.attr.st_mode = m;
 	e.attr.st_nlink = nlink;
+	e.attr.st_uid = getuid();
+	e.attr.st_gid = getgid();
+	e.attr.st_atime = e.attr.st_mtime = e.attr.st_ctime = g_mtime;
 	e.attr.st_size = (off_t)size;
-	fi->direct_io = 1;
 	fuse_reply_create(req, &e, fi);
 }
 
@@ -304,8 +320,34 @@ static void ll_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr, int to
 	st.st_ino = ino;
 	st.st_mode = mode;
 	st.st_nlink = nlink;
+	st.st_uid = getuid();
+	st.st_gid = getgid();
+	st.st_atime = st.st_mtime = st.st_ctime = g_mtime;
 	st.st_size = (off_t)size;
 	fuse_reply_attr(req, &st, 1.0);
+}
+
+static void ll_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
+		      fuse_ino_t newparent, const char *newname, unsigned int flags)
+{
+	(void)flags;
+	if (!fvs_writable()) {
+		fuse_reply_err(req, EROFS);
+		return;
+	}
+	fuse_reply_err(req, fvs_rename((uint64_t)parent, (char*)name, (uint64_t)newparent, (char*)newname));
+}
+
+static void ll_fsync(fuse_req_t req, fuse_ino_t ino, int datasync, struct fuse_file_info *fi)
+{
+	(void)ino; (void)datasync; (void)fi;
+	fuse_reply_err(req, 0);
+}
+
+static void ll_flush(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi)
+{
+	(void)ino; (void)fi;
+	fuse_reply_err(req, 0);
 }
 
 static struct fuse_lowlevel_ops g_ops = {
@@ -322,6 +364,9 @@ static struct fuse_lowlevel_ops g_ops = {
 	.mkdir = ll_mkdir,
 	.unlink = ll_unlink,
 	.rmdir = ll_unlink,
+	.rename = ll_rename,
+	.fsync = ll_fsync,
+	.flush = ll_flush,
 };
 
 static struct fuse_lowlevel_ops* fvs_ops(void) { return &g_ops; }
@@ -527,6 +572,16 @@ func fvs_truncate(ino C.uint64_t, size C.int64_t) C.int {
 		return -1
 	}
 	return 0
+}
+
+//export fvs_rename
+func fvs_rename(parent C.uint64_t, name *C.char, newparent C.uint64_t, newname *C.char) C.int {
+	gLock.Lock()
+	defer gLock.Unlock()
+	if gOv == nil {
+		return C.int(syscall.EIO)
+	}
+	return C.int(gOv.rename(uint64(parent), C.GoString(name), uint64(newparent), C.GoString(newname)))
 }
 
 type stringList []string
