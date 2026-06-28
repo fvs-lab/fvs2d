@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -54,11 +55,32 @@ type fileNode struct {
 	childOrder []uint64          // dir: child inos sorted by name (stable readdir)
 }
 
+type blockGetter interface {
+	Get(id core.BlockID) ([]byte, error)
+}
+
+type multiStore struct{ stores []blockGetter }
+
+func (m multiStore) Get(id core.BlockID) ([]byte, error) {
+	var lastErr error
+	for _, s := range m.stores {
+		data, err := s.Get(id)
+		if err == nil {
+			return data, nil
+		}
+		lastErr = err
+	}
+	if lastErr == nil {
+		lastErr = core.ErrBlockNotFound
+	}
+	return nil, lastErr
+}
+
 // fsTree is a read-only, in-memory view of a committed state.
 type fsTree struct {
 	nodes     map[uint64]*fileNode
 	blockSize int
-	store     core.BlockStore
+	store     blockGetter
 }
 
 func (t *fsTree) get(ino uint64) *fileNode { return t.nodes[ino] }
@@ -118,7 +140,7 @@ func (t *fsTree) readAt(n *fileNode, off int64, length int) ([]byte, error) {
 }
 
 // buildTree turns a commit's flat file list into an inode tree rooted at ino 1.
-func buildTree(store core.BlockStore, blockSize int, files []commitFile) *fsTree {
+func buildTree(store blockGetter, blockSize int, files []commitFile) *fsTree {
 	t := &fsTree{nodes: map[uint64]*fileNode{}, blockSize: blockSize, store: store}
 	root := &fileNode{ino: 1, isDir: true, mode: 0o755, children: map[string]uint64{}}
 	t.nodes[1] = root
@@ -207,6 +229,106 @@ func buildTreeFromRepo(repo, statePrefix, branch, blocksOverride string) (*fsTre
 		bs = 4096
 	}
 	return buildTree(store, bs, doc.Files), nil
+}
+
+type layerSel struct {
+	repo   string
+	state  string
+	branch string
+}
+
+func parseLayerSel(s string) layerSel {
+	if i := strings.LastIndex(s, "@"); i >= 0 {
+		return layerSel{repo: s[:i], state: s[i+1:]}
+	}
+	if i := strings.LastIndex(s, "#"); i >= 0 {
+		return layerSel{repo: s[:i], branch: s[i+1:]}
+	}
+	return layerSel{repo: s}
+}
+
+const whiteoutPrefix = ".wh."
+
+func buildMergedTreeFromRepos(layers []layerSel, blocksOverride string) (*fsTree, error) {
+	if len(layers) == 0 {
+		return nil, errors.New("no layers to mount")
+	}
+
+	order := make([]string, 0)
+	files := make(map[string]commitFile)
+	var stores []blockGetter
+	blockSize := 0
+
+	add := func(p string, f commitFile) {
+		if _, ok := files[p]; !ok {
+			order = append(order, p)
+		}
+		files[p] = f
+	}
+	del := func(p string) {
+		if _, ok := files[p]; !ok {
+			return
+		}
+		delete(files, p)
+		for i, q := range order {
+			if q == p {
+				order = append(order[:i], order[i+1:]...)
+				break
+			}
+		}
+	}
+
+	for _, l := range layers {
+		doc, err := loadResolvedCommit(l)
+		if err != nil {
+			return nil, fmt.Errorf("layer %s: %w", l.repo, err)
+		}
+		if doc.BlockSize > 0 {
+			blockSize = doc.BlockSize
+		}
+		blocks := blocksOverride
+		if blocks == "" {
+			blocks = filepath.Join(l.repo, ".fvs2", "blocks")
+		}
+		store, err := core.NewDiskBlockStore(blocks)
+		if err != nil {
+			return nil, err
+		}
+		stores = append(stores, store)
+
+		for _, f := range doc.Files {
+			clean := strings.Trim(filepath.ToSlash(f.Path), "/")
+			if clean == "" {
+				continue
+			}
+			if base := path.Base(clean); strings.HasPrefix(base, whiteoutPrefix) {
+				target := strings.Trim(path.Join(path.Dir(clean), strings.TrimPrefix(base, whiteoutPrefix)), "/")
+				del(target)
+				continue
+			}
+			add(clean, f)
+		}
+	}
+
+	if blockSize <= 0 {
+		blockSize = 4096
+	}
+	out := make([]commitFile, 0, len(order))
+	for _, p := range order {
+		out = append(out, files[p])
+	}
+	return buildTree(multiStore{stores: stores}, blockSize, out), nil
+}
+
+func loadResolvedCommit(l layerSel) (commitDoc, error) {
+	id, err := resolveCommit(l.repo, l.state, l.branch)
+	if err != nil {
+		return commitDoc{}, err
+	}
+	if id == "" {
+		return commitDoc{}, errors.New("no commit to mount (empty branch or no states)")
+	}
+	return loadCommitDoc(l.repo, id)
 }
 
 func resolveCommit(repo, statePrefix, branch string) (string, error) {

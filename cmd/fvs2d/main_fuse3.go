@@ -40,6 +40,12 @@ extern long     fvs_readdir_count(uint64_t ino);
 extern char*    fvs_readdir_at(uint64_t ino, long idx, uint64_t* out_ino, uint32_t* out_mode);
 extern char*    fvs_read_node(uint64_t ino, off_t off, size_t req, size_t* out_len, int* err_out);
 extern char*    fvs_readlink(uint64_t ino);
+extern int      fvs_writable(void);
+extern int      fvs_create(uint64_t parent, char* name, uint32_t mode, uint64_t* out_ino);
+extern long     fvs_write(uint64_t ino, char* buf, size_t size, off_t off, int* err_out);
+extern int      fvs_mkdir(uint64_t parent, char* name, uint32_t mode, uint64_t* out_ino);
+extern int      fvs_remove(uint64_t parent, char* name);
+extern int      fvs_truncate(uint64_t ino, int64_t size);
 
 static void ll_init(void *userdata, struct fuse_conn_info *conn)
 {
@@ -143,7 +149,8 @@ static void ll_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off, s
 
 static void ll_open(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi)
 {
-	if ((fi->flags & O_ACCMODE) != O_RDONLY) {
+	int wr = (fi->flags & O_ACCMODE) != O_RDONLY;
+	if (wr && !fvs_writable()) {
 		fuse_reply_err(req, EROFS);
 		return;
 	}
@@ -152,6 +159,9 @@ static void ll_open(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi)
 	if (fvs_getattr((uint64_t)ino, &mode, &size, &nlink) != 0) {
 		fuse_reply_err(req, ENOENT);
 		return;
+	}
+	if (wr && (fi->flags & O_TRUNC)) {
+		fvs_truncate((uint64_t)ino, 0);
 	}
 	fi->direct_io = 1;
 	fuse_reply_open(req, fi);
@@ -189,20 +199,129 @@ static void ll_readlink(fuse_req_t req, fuse_ino_t ino)
 
 static void ll_write(fuse_req_t req, fuse_ino_t ino, const char *buf, size_t size, off_t off, struct fuse_file_info *fi)
 {
-	(void)ino; (void)buf; (void)size; (void)off; (void)fi;
-	// The mounted view is a read-only snapshot of a committed state.
-	fuse_reply_err(req, EROFS);
+	(void)fi;
+	if (!fvs_writable()) {
+		fuse_reply_err(req, EROFS);
+		return;
+	}
+	int err = 0;
+	long n = fvs_write((uint64_t)ino, (char*)buf, size, off, &err);
+	if (n < 0) {
+		fuse_reply_err(req, err ? err : EIO);
+		return;
+	}
+	fuse_reply_write(req, (size_t)n);
+}
+
+static void reply_new_entry(fuse_req_t req, uint64_t ino)
+{
+	uint32_t mode = 0, nlink = 1;
+	int64_t size = 0;
+	fvs_getattr(ino, &mode, &size, &nlink);
+	struct fuse_entry_param e;
+	memset(&e, 0, sizeof(e));
+	e.ino = ino;
+	e.attr_timeout = 1.0;
+	e.entry_timeout = 1.0;
+	e.attr.st_ino = ino;
+	e.attr.st_mode = mode;
+	e.attr.st_nlink = nlink;
+	e.attr.st_size = (off_t)size;
+	fuse_reply_entry(req, &e);
+}
+
+static void ll_create(fuse_req_t req, fuse_ino_t parent, const char *name, mode_t mode, struct fuse_file_info *fi)
+{
+	if (!fvs_writable()) {
+		fuse_reply_err(req, EROFS);
+		return;
+	}
+	uint64_t ino = 0;
+	if (fvs_create((uint64_t)parent, (char*)name, (uint32_t)mode, &ino) != 0 || ino == 0) {
+		fuse_reply_err(req, EIO);
+		return;
+	}
+	uint32_t m = 0, nlink = 1;
+	int64_t size = 0;
+	fvs_getattr(ino, &m, &size, &nlink);
+	struct fuse_entry_param e;
+	memset(&e, 0, sizeof(e));
+	e.ino = ino;
+	e.attr_timeout = 1.0;
+	e.entry_timeout = 1.0;
+	e.attr.st_ino = ino;
+	e.attr.st_mode = m;
+	e.attr.st_nlink = nlink;
+	e.attr.st_size = (off_t)size;
+	fi->direct_io = 1;
+	fuse_reply_create(req, &e, fi);
+}
+
+static void ll_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name, mode_t mode)
+{
+	if (!fvs_writable()) {
+		fuse_reply_err(req, EROFS);
+		return;
+	}
+	uint64_t ino = 0;
+	if (fvs_mkdir((uint64_t)parent, (char*)name, (uint32_t)mode, &ino) != 0 || ino == 0) {
+		fuse_reply_err(req, EIO);
+		return;
+	}
+	reply_new_entry(req, ino);
+}
+
+static void ll_unlink(fuse_req_t req, fuse_ino_t parent, const char *name)
+{
+	if (!fvs_writable()) {
+		fuse_reply_err(req, EROFS);
+		return;
+	}
+	fuse_reply_err(req, fvs_remove((uint64_t)parent, (char*)name));
+}
+
+static void ll_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr, int to_set, struct fuse_file_info *fi)
+{
+	(void)fi;
+	if (to_set & FUSE_SET_ATTR_SIZE) {
+		if (!fvs_writable()) {
+			fuse_reply_err(req, EROFS);
+			return;
+		}
+		if (fvs_truncate((uint64_t)ino, (int64_t)attr->st_size) != 0) {
+			fuse_reply_err(req, EIO);
+			return;
+		}
+	}
+	uint32_t mode = 0, nlink = 1;
+	int64_t size = 0;
+	if (fvs_getattr((uint64_t)ino, &mode, &size, &nlink) != 0) {
+		fuse_reply_err(req, ENOENT);
+		return;
+	}
+	struct stat st;
+	memset(&st, 0, sizeof(st));
+	st.st_ino = ino;
+	st.st_mode = mode;
+	st.st_nlink = nlink;
+	st.st_size = (off_t)size;
+	fuse_reply_attr(req, &st, 1.0);
 }
 
 static struct fuse_lowlevel_ops g_ops = {
 	.init = ll_init,
 	.lookup = ll_lookup,
 	.getattr = ll_getattr,
+	.setattr = ll_setattr,
 	.readdir = ll_readdir,
 	.readlink = ll_readlink,
 	.open = ll_open,
 	.read = ll_read,
 	.write = ll_write,
+	.create = ll_create,
+	.mkdir = ll_mkdir,
+	.unlink = ll_unlink,
+	.rmdir = ll_unlink,
 };
 
 static struct fuse_lowlevel_ops* fvs_ops(void) { return &g_ops; }
@@ -215,6 +334,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"unsafe"
@@ -223,114 +343,92 @@ import (
 )
 
 var (
-	gMu   sync.RWMutex
-	gTree *fsTree
+	gLock sync.Mutex
+	gOv   *overlay
 )
 
-// nodeStMode encodes a node's full st_mode (type bits + perms) for FUSE.
-func nodeStMode(n *fileNode) uint32 {
-	switch {
-	case n.isDir:
-		return syscall.S_IFDIR | (n.mode & 0o7777)
-	case n.link != "":
-		return syscall.S_IFLNK | 0o777
-	default:
-		return syscall.S_IFREG | (n.mode & 0o7777)
+//export fvs_writable
+func fvs_writable() C.int {
+	gLock.Lock()
+	defer gLock.Unlock()
+	if gOv != nil && gOv.writable() {
+		return 1
 	}
+	return 0
 }
 
 //export fvs_getattr
 func fvs_getattr(ino C.uint64_t, mode *C.uint32_t, size *C.int64_t, nlink *C.uint32_t) C.int {
-	gMu.RLock()
-	defer gMu.RUnlock()
-	if gTree == nil {
+	gLock.Lock()
+	defer gLock.Unlock()
+	if gOv == nil {
 		return -1
 	}
-	n := gTree.get(uint64(ino))
-	if n == nil {
+	m, sz, nl, ok := gOv.getattr(uint64(ino))
+	if !ok {
 		return -1
 	}
-	*mode = C.uint32_t(nodeStMode(n))
-	*size = C.int64_t(n.size)
-	if n.isDir {
-		*nlink = 2
-	} else {
-		*nlink = 1
-	}
+	*mode = C.uint32_t(m)
+	*size = C.int64_t(sz)
+	*nlink = C.uint32_t(nl)
 	return 0
 }
 
 //export fvs_lookup
 func fvs_lookup(parent C.uint64_t, name *C.char) C.uint64_t {
-	gMu.RLock()
-	defer gMu.RUnlock()
-	if gTree == nil {
+	gLock.Lock()
+	defer gLock.Unlock()
+	if gOv == nil {
 		return 0
 	}
-	return C.uint64_t(gTree.lookup(uint64(parent), C.GoString(name)))
+	return C.uint64_t(gOv.lookup(uint64(parent), C.GoString(name)))
 }
+
+var gDir = map[uint64][]dirent{}
 
 //export fvs_readdir_count
 func fvs_readdir_count(ino C.uint64_t) C.long {
-	gMu.RLock()
-	defer gMu.RUnlock()
-	if gTree == nil {
+	gLock.Lock()
+	defer gLock.Unlock()
+	if gOv == nil {
 		return -1
 	}
-	n := gTree.get(uint64(ino))
-	if n == nil || !n.isDir {
+	ents, ok := gOv.listDir(uint64(ino))
+	if !ok {
 		return -1
 	}
-	return C.long(len(n.childOrder))
+	gDir[uint64(ino)] = ents
+	return C.long(len(ents))
 }
 
 //export fvs_readdir_at
 func fvs_readdir_at(ino C.uint64_t, idx C.long, outIno *C.uint64_t, outMode *C.uint32_t) *C.char {
-	gMu.RLock()
-	defer gMu.RUnlock()
-	if gTree == nil {
-		return nil
-	}
-	d := gTree.get(uint64(ino))
-	if d == nil || !d.isDir {
-		return nil
-	}
+	gLock.Lock()
+	defer gLock.Unlock()
+	ents := gDir[uint64(ino)]
 	i := int(idx)
-	if i < 0 || i >= len(d.childOrder) {
+	if i < 0 || i >= len(ents) {
 		return nil
 	}
-	c := gTree.get(d.childOrder[i])
-	if c == nil {
-		return nil
-	}
-	*outIno = C.uint64_t(c.ino)
-	*outMode = C.uint32_t(nodeStMode(c))
-	return C.CString(c.name)
+	e := ents[i]
+	*outIno = C.uint64_t(e.ino)
+	*outMode = C.uint32_t(e.mode)
+	return C.CString(e.name)
 }
 
 //export fvs_read_node
 func fvs_read_node(ino C.uint64_t, off C.off_t, req C.size_t, outLen *C.size_t, errOut *C.int) *C.char {
 	*errOut = 0
 	*outLen = 0
-	gMu.RLock()
-	defer gMu.RUnlock()
-	if gTree == nil {
+	gLock.Lock()
+	defer gLock.Unlock()
+	if gOv == nil {
 		*errOut = C.int(syscall.EIO)
 		return nil
 	}
-	n := gTree.get(uint64(ino))
-	if n == nil {
-		*errOut = C.int(syscall.ENOENT)
-		return nil
-	}
-	if n.isDir {
-		*errOut = C.int(syscall.EISDIR)
-		return nil
-	}
-	data, err := gTree.readAt(n, int64(off), int(req))
-	if err != nil {
-		// Includes ErrBlockCorrupt: surface as an I/O error rather than serving bad bytes.
-		*errOut = C.int(syscall.EIO)
+	data, errno := gOv.readAt(uint64(ino), int64(off), int(req))
+	if errno != 0 {
+		*errOut = C.int(errno)
 		return nil
 	}
 	if len(data) == 0 {
@@ -348,16 +446,95 @@ func fvs_read_node(ino C.uint64_t, off C.off_t, req C.size_t, outLen *C.size_t, 
 
 //export fvs_readlink
 func fvs_readlink(ino C.uint64_t) *C.char {
-	gMu.RLock()
-	defer gMu.RUnlock()
-	if gTree == nil {
+	gLock.Lock()
+	defer gLock.Unlock()
+	if gOv == nil {
 		return nil
 	}
-	n := gTree.get(uint64(ino))
-	if n == nil || n.link == "" {
+	tgt, ok := gOv.readlink(uint64(ino))
+	if !ok {
 		return nil
 	}
-	return C.CString(n.link)
+	return C.CString(tgt)
+}
+
+//export fvs_create
+func fvs_create(parent C.uint64_t, name *C.char, mode C.uint32_t, outIno *C.uint64_t) C.int {
+	gLock.Lock()
+	defer gLock.Unlock()
+	if gOv == nil {
+		return -1
+	}
+	ino, errno := gOv.create(uint64(parent), C.GoString(name), uint32(mode))
+	if errno != 0 {
+		return -1
+	}
+	*outIno = C.uint64_t(ino)
+	return 0
+}
+
+//export fvs_write
+func fvs_write(ino C.uint64_t, buf *C.char, size C.size_t, off C.off_t, errOut *C.int) C.long {
+	*errOut = 0
+	gLock.Lock()
+	defer gLock.Unlock()
+	if gOv == nil {
+		*errOut = C.int(syscall.EIO)
+		return -1
+	}
+	data := C.GoBytes(unsafe.Pointer(buf), C.int(size))
+	n, errno := gOv.write(uint64(ino), data, int64(off))
+	if errno != 0 {
+		*errOut = C.int(errno)
+		return -1
+	}
+	return C.long(n)
+}
+
+//export fvs_mkdir
+func fvs_mkdir(parent C.uint64_t, name *C.char, mode C.uint32_t, outIno *C.uint64_t) C.int {
+	gLock.Lock()
+	defer gLock.Unlock()
+	if gOv == nil {
+		return -1
+	}
+	ino, errno := gOv.mkdir(uint64(parent), C.GoString(name), uint32(mode))
+	if errno != 0 {
+		return -1
+	}
+	*outIno = C.uint64_t(ino)
+	return 0
+}
+
+//export fvs_remove
+func fvs_remove(parent C.uint64_t, name *C.char) C.int {
+	gLock.Lock()
+	defer gLock.Unlock()
+	if gOv == nil {
+		return C.int(syscall.EIO)
+	}
+	return C.int(gOv.remove(uint64(parent), C.GoString(name)))
+}
+
+//export fvs_truncate
+func fvs_truncate(ino C.uint64_t, size C.int64_t) C.int {
+	gLock.Lock()
+	defer gLock.Unlock()
+	if gOv == nil {
+		return -1
+	}
+	if gOv.truncate(uint64(ino), int64(size)) != 0 {
+		return -1
+	}
+	return 0
+}
+
+type stringList []string
+
+func (s *stringList) String() string { return strings.Join(*s, ",") }
+func (s *stringList) Set(v string) error {
+	*s = append(*s, v)
+	return nil
 }
 
 func main() {
@@ -366,6 +543,8 @@ func main() {
 	var repoDir string
 	var stateSel string
 	var branchSel string
+	var lowers stringList
+	var upperDir string
 	var debug bool
 	var blockSize int
 	var probe bool
@@ -374,6 +553,8 @@ func main() {
 	flag.StringVar(&repoDir, "repo", ".", "repo root containing .fvs2")
 	flag.StringVar(&stateSel, "state", "", "state id/prefix to mount (default: HEAD)")
 	flag.StringVar(&branchSel, "branch", "", "branch to mount (default: HEAD)")
+	flag.Var(&lowers, "lower", "lower layer repo (repeatable, low-to-high): repo | repo@state | repo#branch")
+	flag.StringVar(&upperDir, "upper", "", "writable upper layer dir (enables writes; omit for read-only)")
 	flag.StringVar(&blocksDir, "blocks", "", "blocks dir override (default: <repo>/.fvs2/blocks)")
 	flag.BoolVar(&debug, "debug", false, "enable debug")
 	flag.IntVar(&blockSize, "block-size", 4096, "fallback block size (overridden by the commit)")
@@ -400,14 +581,30 @@ func main() {
 		os.Exit(1)
 	}
 
-	tree, err := buildTreeFromRepo(repoDir, stateSel, branchSel, blocksDir)
+	var tree *fsTree
+	var err error
+	if len(lowers) > 0 {
+		sels := make([]layerSel, 0, len(lowers))
+		for _, s := range lowers {
+			sels = append(sels, parseLayerSel(s))
+		}
+		tree, err = buildMergedTreeFromRepos(sels, blocksDir)
+	} else {
+		tree, err = buildTreeFromRepo(repoDir, stateSel, branchSel, blocksDir)
+	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ERR: %v\n", err)
 		os.Exit(1)
 	}
-	gMu.Lock()
-	gTree = tree
-	gMu.Unlock()
+	if upperDir != "" {
+		if err := os.MkdirAll(upperDir, 0o755); err != nil {
+			fmt.Fprintf(os.Stderr, "ERR: upper dir: %v\n", err)
+			os.Exit(1)
+		}
+	}
+	gLock.Lock()
+	gOv = newOverlay(tree, upperDir)
+	gLock.Unlock()
 
 	// fuse_session_new() only accepts low-level options (e.g. -d). The
 	// mountpoint is passed separately to fuse_session_mount() below, and -f
