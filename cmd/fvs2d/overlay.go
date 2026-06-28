@@ -446,6 +446,14 @@ func (o *overlay) rename(parent uint64, name string, newParent uint64, newName s
 	if err := os.Rename(srcUp, o.upperJoin(dst)); err != nil {
 		return syscall.EIO
 	}
+	if id, ok := o.pathToIno[src]; ok {
+		delete(o.pathToIno, src)
+		if oldDst, ok := o.pathToIno[dst]; ok && oldDst != id {
+			delete(o.inoToPath, oldDst)
+		}
+		o.pathToIno[dst] = id
+		o.inoToPath[id] = dst
+	}
 	if o.lowerNode(src) != nil {
 		wh := o.upperJoin(joinPath(pp, whiteoutPrefix+name))
 		if f, err := os.OpenFile(wh, os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
