@@ -378,14 +378,33 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"os/signal"
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 	"unsafe"
 
+	"google.golang.org/grpc"
+
+	pb "fvs2d/internal/controlpb"
 	"fvs2d/internal/runtime"
 )
+
+// unmount detaches the FUSE mount so the blocked session loop can return.
+//
+// fuse_session_exit only sets a flag; a loop parked on a read of /dev/fuse
+// keeps waiting until woken. A signal wakes it via EINTR, a gRPC Shutdown does
+// not, so we unmount to break the loop. lazy detaches even if the mount is
+// busy. Errors are ignored: the deferred fuse_session_unmount is the fallback.
+func unmount(mp string, lazy bool) {
+	arg := "-u"
+	if lazy {
+		arg = "-uz"
+	}
+	_ = exec.Command("fusermount3", arg, mp).Run()
+}
 
 var (
 	gLock sync.Mutex
@@ -603,6 +622,7 @@ func main() {
 	var debug bool
 	var blockSize int
 	var probe bool
+	var controlAddr string
 
 	flag.StringVar(&mountPoint, "mount", "", "mountpoint")
 	flag.StringVar(&repoDir, "repo", ".", "repo root containing .fvs2")
@@ -614,6 +634,7 @@ func main() {
 	flag.BoolVar(&debug, "debug", false, "enable debug")
 	flag.IntVar(&blockSize, "block-size", 4096, "fallback block size (overridden by the commit)")
 	flag.BoolVar(&probe, "probe", false, "print capability report and exit")
+	flag.StringVar(&controlAddr, "control", "", "enable gRPC control server: unix:/path.sock or tcp:host:port (empty = disabled)")
 	flag.Parse()
 	_ = blockSize // block size is taken from the committed state
 
@@ -705,6 +726,68 @@ func main() {
 	}
 	defer C.fuse_session_unmount(se)
 
+	// Optional gRPC control plane. Shutdown is funneled through a channel so the
+	// session loop below stays the only place that touches the C session handle.
+	shutdownReq := make(chan bool, 1)
+	startTime := time.Now()
+
+	statusFn := func() *pb.GetStatusResponse {
+		gLock.Lock()
+		writable := gOv != nil && gOv.writable()
+		upper := ""
+		if gOv != nil {
+			upper = gOv.upper
+		}
+		gLock.Unlock()
+
+		resp := &pb.GetStatusResponse{
+			Mountpoint:    mountPoint,
+			Writable:      writable,
+			Upper:         upper,
+			NodeCount:     uint32(len(tree.nodes)),
+			BlockSize:     int32(tree.blockSize),
+			Debug:         debug,
+			Pid:           int32(os.Getpid()),
+			UptimeSeconds: int64(time.Since(startTime).Seconds()),
+			ApiVersion:    controlAPIVersion,
+		}
+		if len(lowers) > 0 {
+			for _, s := range lowers {
+				sel := parseLayerSel(s)
+				resp.Layers = append(resp.Layers, &pb.Layer{
+					Repo:   sel.repo,
+					State:  sel.state,
+					Branch: sel.branch,
+				})
+			}
+		} else {
+			resp.Repo = repoDir
+			resp.State = stateSel
+			resp.Branch = branchSel
+		}
+		return resp
+	}
+
+	var control *grpc.Server
+	if controlAddr != "" {
+		srv := &controlServer{
+			statusFn: statusFn,
+			shutdownFn: func(lazy bool) {
+				select {
+				case shutdownReq <- lazy:
+				default: // a shutdown is already pending
+				}
+			},
+		}
+		var err error
+		control, err = startControlServer(controlAddr, srv)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "ERR: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Fprintf(os.Stderr, "control: serving on %s\n", controlAddr)
+	}
+
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
@@ -721,9 +804,25 @@ func main() {
 	select {
 	case <-sigCh:
 		C.fuse_session_exit(se)
+		if control != nil {
+			control.Stop()
+		}
+		<-errCh
+		return
+	case lazy := <-shutdownReq:
+		// Set the exit flag, then unmount to wake the parked session loop.
+		C.fuse_session_exit(se)
+		unmount(mountPoint, lazy)
+		if control != nil {
+			// GracefulStop lets the in-flight Shutdown RPC flush its reply.
+			control.GracefulStop()
+		}
 		<-errCh
 		return
 	case err := <-errCh:
+		if control != nil {
+			control.Stop()
+		}
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "ERR: %v\n", err)
 			os.Exit(1)
