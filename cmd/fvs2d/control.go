@@ -1,5 +1,3 @@
-//go:build fuse3
-
 package main
 
 import (

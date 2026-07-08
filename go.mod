@@ -6,6 +6,7 @@ replace fvs-v2-core => ../core
 
 require (
 	fvs-v2-core v0.0.0-00010101000000-000000000000
+	github.com/hanwen/go-fuse/v2 v2.10.1
 	google.golang.org/grpc v1.81.1
 	google.golang.org/protobuf v1.36.11
 )
