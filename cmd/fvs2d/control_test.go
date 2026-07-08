@@ -9,6 +9,7 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 
 	pb "fvs2d/internal/controlpb"
 )
@@ -63,9 +64,10 @@ func TestControlServerRoundTrip(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	h, err := client.Health(ctx, &pb.HealthRequest{})
-	if err != nil || !h.GetOk() {
-		t.Fatalf("Health: err=%v ok=%v", err, h.GetOk())
+	hc := healthpb.NewHealthClient(conn)
+	hr, err := hc.Check(ctx, &healthpb.HealthCheckRequest{})
+	if err != nil || hr.GetStatus() != healthpb.HealthCheckResponse_SERVING {
+		t.Fatalf("Health: err=%v status=%v", err, hr.GetStatus())
 	}
 
 	st, err := client.GetStatus(ctx, &pb.GetStatusRequest{})
@@ -77,9 +79,8 @@ func TestControlServerRoundTrip(t *testing.T) {
 		t.Fatalf("unexpected status: %+v", st)
 	}
 
-	resp, err := client.Shutdown(ctx, &pb.ShutdownRequest{Lazy: true})
-	if err != nil || !resp.GetOk() {
-		t.Fatalf("Shutdown: err=%v ok=%v", err, resp.GetOk())
+	if _, err := client.Shutdown(ctx, &pb.ShutdownRequest{Lazy: true}); err != nil {
+		t.Fatalf("Shutdown: %v", err)
 	}
 	select {
 	case lazy := <-shutdownCh:

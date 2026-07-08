@@ -8,6 +8,9 @@ import (
 	"strings"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/protobuf/types/known/emptypb"
 
 	pb "fvs2d/internal/controlpb"
 )
@@ -22,17 +25,13 @@ type controlServer struct {
 	shutdownFn func(lazy bool)
 }
 
-func (s *controlServer) Health(_ context.Context, _ *pb.HealthRequest) (*pb.HealthResponse, error) {
-	return &pb.HealthResponse{Ok: true}, nil
-}
-
 func (s *controlServer) GetStatus(_ context.Context, _ *pb.GetStatusRequest) (*pb.GetStatusResponse, error) {
 	return s.statusFn(), nil
 }
 
-func (s *controlServer) Shutdown(_ context.Context, req *pb.ShutdownRequest) (*pb.ShutdownResponse, error) {
+func (s *controlServer) Shutdown(_ context.Context, req *pb.ShutdownRequest) (*emptypb.Empty, error) {
 	s.shutdownFn(req.GetLazy())
-	return &pb.ShutdownResponse{Ok: true}, nil
+	return &emptypb.Empty{}, nil
 }
 
 // parseControlAddr maps a -control value onto net.Listen (network, address).
@@ -84,6 +83,9 @@ func startControlServer(addr string, srv *controlServer) (*grpc.Server, error) {
 	}
 	gs := grpc.NewServer()
 	pb.RegisterControlServer(gs, srv)
+	hs := health.NewServer()
+	hs.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
+	healthpb.RegisterHealthServer(gs, hs)
 	go func() {
 		// Serve returns when the server is stopped; the error is not actionable.
 		_ = gs.Serve(lis)
