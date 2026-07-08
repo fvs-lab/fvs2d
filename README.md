@@ -16,16 +16,11 @@ directory that is itself ready to commit as a new state.
 
 ## Build
 
-Default build (no FUSE backend, capability probe only):
+The daemon uses the pure-Go
+[go-fuse](https://github.com/hanwen/go-fuse) client. Only the runtime `fusermount3` helper and `/dev/fuse` are needed.
 
 ```bash
 go build -o ./bin/fvs2d ./cmd/fvs2d
-```
-
-FUSE3 build (requires `libfuse3-dev` and `pkg-config`):
-
-```bash
-CGO_ENABLED=1 go build -tags fuse3 -o ./bin/fvs2d ./cmd/fvs2d
 ```
 
 ## Usage

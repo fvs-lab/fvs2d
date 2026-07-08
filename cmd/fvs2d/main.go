@@ -1,59 +1,187 @@
-//go:build !fuse3
-
 package main
 
 import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
+	"os/signal"
+	"strings"
+	"syscall"
+	"time"
 
-	"fvs2d/internal/fusefs"
+	"github.com/hanwen/go-fuse/v2/fs"
+	"github.com/hanwen/go-fuse/v2/fuse"
+	"google.golang.org/grpc"
+
+	pb "fvs2d/internal/controlpb"
 	"fvs2d/internal/runtime"
 )
 
-func main() {
-	var mountPoint string
-	var blocksDir string
-	var debug bool
+type stringList []string
+
+func (s *stringList) String() string { return strings.Join(*s, ",") }
+func (s *stringList) Set(v string) error {
+	*s = append(*s, v)
+	return nil
+}
+
+func lazyUnmount(mountPoint string) error {
+	for _, command := range []string{"fusermount3", "fusermount"} {
+		if path, err := exec.LookPath(command); err == nil {
+			return exec.Command(path, "-uz", mountPoint).Run()
+		}
+	}
+	return fmt.Errorf("fusermount not found")
+}
+
+func run() error {
+	var mountPoint, blocksDir, repoDir, stateSel, branchSel, upperDir, controlAddr string
+	var lowers stringList
+	var debug, probe bool
 	var blockSize int
-	var probe bool
 
 	flag.StringVar(&mountPoint, "mount", "", "mountpoint")
-	flag.StringVar(&blocksDir, "blocks", "", "blocks dir (e.g. /path/to/.fvs2/blocks)")
+	flag.StringVar(&repoDir, "repo", ".", "repo root containing .fvs2")
+	flag.StringVar(&stateSel, "state", "", "state id/prefix to mount (default: HEAD)")
+	flag.StringVar(&branchSel, "branch", "", "branch to mount (default: HEAD)")
+	flag.Var(&lowers, "lower", "lower layer repo (repeatable, low-to-high): repo | repo@state | repo#branch")
+	flag.StringVar(&upperDir, "upper", "", "writable upper layer dir (enables writes; omit for read-only)")
+	flag.StringVar(&blocksDir, "blocks", "", "blocks dir override (default: <repo>/.fvs2/blocks)")
 	flag.BoolVar(&debug, "debug", false, "enable debug")
-	flag.IntVar(&blockSize, "block-size", 4096, "CoW block size")
+	flag.IntVar(&blockSize, "block-size", 4096, "fallback block size (overridden by the commit)")
 	flag.BoolVar(&probe, "probe", false, "print capability report and exit")
+	flag.StringVar(&controlAddr, "control", "", "enable gRPC control server: unix:/path.sock or tcp:host:port (empty = disabled)")
 	flag.Parse()
+	_ = blockSize
 
 	flatpak := runtime.DetectFlatpak()
 	devFuse := runtime.DevFuseAccessible()
 	fmount := runtime.FusermountAvailable()
-
 	if probe {
 		fmt.Printf("flatpak=%v\n", flatpak)
 		fmt.Printf("dev_fuse_accessible=%v\n", devFuse)
 		fmt.Printf("fusermount_available=%v\n", fmount)
-		return
+		return nil
 	}
-
 	if mountPoint == "" {
-		fmt.Fprintln(os.Stderr, "ERR: --mount is required")
-		os.Exit(2)
+		return fmt.Errorf("--mount is required")
 	}
-
 	if !devFuse || !fmount {
-		fmt.Fprintf(os.Stderr, "ERR: cannot mount (dev_fuse_accessible=%v fusermount_available=%v)\n", devFuse, fmount)
-		os.Exit(1)
+		return fmt.Errorf("cannot mount (dev_fuse_accessible=%v fusermount_available=%v)", devFuse, fmount)
 	}
 
-	s, err := fusefs.New(fusefs.Config{MountPoint: mountPoint, Debug: debug, BlocksDir: blocksDir, BlockSize: blockSize})
+	var tree *fsTree
+	var err error
+	if len(lowers) > 0 {
+		sels := make([]layerSel, 0, len(lowers))
+		for _, layer := range lowers {
+			sels = append(sels, parseLayerSel(layer))
+		}
+		tree, err = buildMergedTreeFromRepos(sels, blocksDir)
+	} else {
+		tree, err = buildTreeFromRepo(repoDir, stateSel, branchSel, blocksDir)
+	}
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "ERR: %v\n", err)
-		os.Exit(1)
+		return err
 	}
-	defer s.Close()
+	if upperDir != "" {
+		if err := os.MkdirAll(upperDir, 0o755); err != nil {
+			return fmt.Errorf("upper dir: %w", err)
+		}
+	}
 
-	if err := s.MountAndServe(); err != nil {
+	root := newFuseRoot(tree, upperDir)
+	server, err := fs.Mount(mountPoint, root, &fs.Options{
+		MountOptions:   fuse.MountOptions{Debug: debug, FsName: "fvs2d", Name: "fvs2d"},
+		RootStableAttr: &fs.StableAttr{Ino: 1, Gen: 1},
+	})
+	if err != nil {
+		return fmt.Errorf("mount: %w", err)
+	}
+
+	shutdownReq := make(chan bool, 1)
+	startTime := time.Now()
+	statusFn := func() *pb.GetStatusResponse {
+		resp := &pb.GetStatusResponse{
+			Mountpoint:    mountPoint,
+			Writable:      root.state.writable(),
+			Upper:         upperDir,
+			NodeCount:     uint32(len(tree.nodes)),
+			BlockSize:     int32(tree.blockSize),
+			Debug:         debug,
+			Pid:           int32(os.Getpid()),
+			UptimeSeconds: int64(time.Since(startTime).Seconds()),
+			ApiVersion:    controlAPIVersion,
+		}
+		if len(lowers) > 0 {
+			for _, layer := range lowers {
+				sel := parseLayerSel(layer)
+				resp.Layers = append(resp.Layers, &pb.Layer{Repo: sel.repo, State: sel.state, Branch: sel.branch})
+			}
+		} else {
+			resp.Repo, resp.State, resp.Branch = repoDir, stateSel, branchSel
+		}
+		return resp
+	}
+
+	var control *grpc.Server
+	if controlAddr != "" {
+		control, err = startControlServer(controlAddr, &controlServer{
+			statusFn: statusFn,
+			shutdownFn: func(lazy bool) {
+				select {
+				case shutdownReq <- lazy:
+				default:
+				}
+			},
+		})
+		if err != nil {
+			_ = server.Unmount()
+			return err
+		}
+		fmt.Fprintf(os.Stderr, "control: serving on %s\n", controlAddr)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		server.Wait()
+		close(done)
+	}()
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(sigCh)
+
+	select {
+	case <-sigCh:
+		err = server.Unmount()
+		if control != nil {
+			control.Stop()
+		}
+	case lazy := <-shutdownReq:
+		if lazy {
+			err = lazyUnmount(mountPoint)
+			if err == nil {
+				<-done
+			} else {
+				err = server.Unmount()
+			}
+		} else {
+			err = server.Unmount()
+		}
+		if control != nil {
+			control.GracefulStop()
+		}
+	case <-done:
+		if control != nil {
+			control.Stop()
+		}
+	}
+	return err
+}
+
+func main() {
+	if err := run(); err != nil {
 		fmt.Fprintf(os.Stderr, "ERR: %v\n", err)
 		os.Exit(1)
 	}
