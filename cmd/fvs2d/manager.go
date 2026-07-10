@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -259,6 +260,21 @@ func (s *fvs2dService) Unmount(_ context.Context, req *fvs2dpb.UnmountRequest) (
 func (s *fvs2dService) Shutdown(_ context.Context, req *fvs2dpb.ShutdownRequest) (*emptypb.Empty, error) {
 	s.shutdown(req.GetMode() == fvs2dpb.UnmountMode_UNMOUNT_MODE_LAZY)
 	return &emptypb.Empty{}, nil
+}
+
+func parseControlAddr(addr string) (network, address string, err error) {
+	switch {
+	case addr == "":
+		return "", "", fmt.Errorf("empty control address")
+	case strings.HasPrefix(addr, "unix:"):
+		return "unix", strings.TrimPrefix(addr, "unix:"), nil
+	case strings.HasPrefix(addr, "tcp:"):
+		return "tcp", strings.TrimPrefix(addr, "tcp:"), nil
+	case strings.HasPrefix(addr, "/"):
+		return "unix", addr, nil
+	default:
+		return "tcp", addr, nil
+	}
 }
 
 // startManagerServer serves the Fvs2d mount-manager API (plus standard health)
