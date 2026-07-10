@@ -62,7 +62,6 @@ message RevisionSelector {
 message Layer {
     string repository_path = 1;
     RevisionSelector revision = 2;
-    optional string blocks_path = 3;
 }
 
 message MountSpec {

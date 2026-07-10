@@ -479,7 +479,6 @@ type Layer struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	RepositoryPath string                 `protobuf:"bytes,1,opt,name=repository_path,json=repositoryPath,proto3" json:"repository_path,omitempty"`
 	Revision       *RevisionSelector      `protobuf:"bytes,2,opt,name=revision,proto3" json:"revision,omitempty"`
-	BlocksPath     *string                `protobuf:"bytes,3,opt,name=blocks_path,json=blocksPath,proto3,oneof" json:"blocks_path,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -526,13 +525,6 @@ func (x *Layer) GetRevision() *RevisionSelector {
 		return x.Revision
 	}
 	return nil
-}
-
-func (x *Layer) GetBlocksPath() string {
-	if x != nil && x.BlocksPath != nil {
-		return *x.BlocksPath
-	}
-	return ""
 }
 
 type MountSpec struct {
@@ -1014,13 +1006,10 @@ const file_fvs2d_proto_rawDesc = "" +
 	"\x12state_id_or_prefix\x18\x01 \x01(\tH\x00R\x0fstateIdOrPrefix\x12\x18\n" +
 	"\x06branch\x18\x02 \x01(\tH\x00R\x06branchB\n" +
 	"\n" +
-	"\bselector\"\x9e\x01\n" +
+	"\bselector\"h\n" +
 	"\x05Layer\x12'\n" +
 	"\x0frepository_path\x18\x01 \x01(\tR\x0erepositoryPath\x126\n" +
-	"\brevision\x18\x02 \x01(\v2\x1a.fvs2d.v1.RevisionSelectorR\brevision\x12$\n" +
-	"\vblocks_path\x18\x03 \x01(\tH\x00R\n" +
-	"blocksPath\x88\x01\x01B\x0e\n" +
-	"\f_blocks_path\"\x9e\x01\n" +
+	"\brevision\x18\x02 \x01(\v2\x1a.fvs2d.v1.RevisionSelectorR\brevision\"\x9e\x01\n" +
 	"\tMountSpec\x12\x1f\n" +
 	"\vmount_point\x18\x01 \x01(\tR\n" +
 	"mountPoint\x12'\n" +
@@ -1147,7 +1136,6 @@ func file_fvs2d_proto_init() {
 		(*RevisionSelector_StateIdOrPrefix)(nil),
 		(*RevisionSelector_Branch)(nil),
 	}
-	file_fvs2d_proto_msgTypes[6].OneofWrappers = []any{}
 	file_fvs2d_proto_msgTypes[7].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
