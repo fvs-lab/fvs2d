@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -21,6 +22,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	fvsrepo "fvs2/repo"
 	"fvs2d/internal/fvs2dpb"
 	"fvs2d/internal/runtime"
 )
@@ -234,6 +236,33 @@ func (s *fvs2dService) Probe(context.Context, *emptypb.Empty) (*fvs2dpb.ProbeRes
 	}, nil
 }
 
+func (s *fvs2dService) InitRepository(_ context.Context, req *fvs2dpb.InitRepositoryRequest) (*fvs2dpb.Repository, error) {
+	if req.GetRepositoryPath() == "" {
+		return nil, status.Error(codes.InvalidArgument, "repository_path is required")
+	}
+	repository, err := fvsrepo.Init(req.GetRepositoryPath(), int(req.GetBlockSize()))
+	if err != nil {
+		return nil, status.Errorf(codes.FailedPrecondition, "init repository: %v", err)
+	}
+	return &fvs2dpb.Repository{RepositoryPath: repository.Path, BlockSize: uint32(repository.BlockSize)}, nil
+}
+
+func (s *fvs2dService) Commit(_ context.Context, req *fvs2dpb.CommitRequest) (*fvs2dpb.Revision, error) {
+	if req.GetRepositoryPath() == "" {
+		return nil, status.Error(codes.InvalidArgument, "repository_path is required")
+	}
+	revision, err := fvsrepo.Commit(req.GetRepositoryPath(), req.GetMessage(), req.GetAllowEmpty(), nil)
+	if err != nil {
+		return nil, status.Errorf(codes.FailedPrecondition, "commit repository: %v", err)
+	}
+	return &fvs2dpb.Revision{
+		RepositoryPath: req.GetRepositoryPath(),
+		StateId:        revision.StateID,
+		CreatedAt:      timestamppb.New(revision.CreatedAt),
+		FileCount:      uint64(revision.FileCount),
+	}, nil
+}
+
 func (s *fvs2dService) CreateMount(_ context.Context, req *fvs2dpb.CreateMountRequest) (*fvs2dpb.Mount, error) {
 	if req.GetSpec() == nil {
 		return nil, status.Error(codes.InvalidArgument, "spec is required")
@@ -259,6 +288,21 @@ func (s *fvs2dService) Unmount(_ context.Context, req *fvs2dpb.UnmountRequest) (
 func (s *fvs2dService) Shutdown(_ context.Context, req *fvs2dpb.ShutdownRequest) (*emptypb.Empty, error) {
 	s.shutdown(req.GetMode() == fvs2dpb.UnmountMode_UNMOUNT_MODE_LAZY)
 	return &emptypb.Empty{}, nil
+}
+
+func parseControlAddr(addr string) (network, address string, err error) {
+	switch {
+	case addr == "":
+		return "", "", fmt.Errorf("empty control address")
+	case strings.HasPrefix(addr, "unix:"):
+		return "unix", strings.TrimPrefix(addr, "unix:"), nil
+	case strings.HasPrefix(addr, "tcp:"):
+		return "tcp", strings.TrimPrefix(addr, "tcp:"), nil
+	case strings.HasPrefix(addr, "/"):
+		return "unix", addr, nil
+	default:
+		return "tcp", addr, nil
+	}
 }
 
 // startManagerServer serves the Fvs2d mount-manager API (plus standard health)

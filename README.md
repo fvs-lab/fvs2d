@@ -42,12 +42,13 @@ fvs2d -mount /mnt/state -lower /path/to/base -lower /path/to/dotnet -upper /path
 # check FUSE capabilities in the current environment
 fvs2d -probe
 
-# enable the gRPC control API (status and clean shutdown over a socket or TCP)
-fvs2d -repo /path/to/repo -mount /mnt/state -control unix:/run/user/1000/fvs2d.sock
+# run the persistent gRPC mount manager
+fvs2d -control unix:/run/user/1000/fvs2d.sock
 ```
 
-Unmount with `fusermount3 -u /mnt/state`, by stopping the daemon, or through the
-control API (`Shutdown`).
+Direct mounts can be unmounted with `fusermount3 -u /mnt/state` or by stopping
+the daemon. Manager-owned mounts are created, inspected and unmounted through
+the `fvs2d.v1.Fvs2d` gRPC API.
 
 ## Status and roadmap
 
@@ -55,10 +56,9 @@ control API (`Shutdown`).
 - A writable upper layer (`-upper`) works today: writes, creates, deletes and
   copy-ups are recorded in the upper directory; deletes are stored as
   `.wh.<name>` whiteout markers.
-- The gRPC control API (`-control`) exposes `Health`, `GetStatus` and
-  `Shutdown`, so a supervisor can introspect the mount and stop it cleanly
-  without signals. The `fvs2` CLI drives the daemon over it (`fvs2 mount` /
-  `fvs2 unmount`).
+- Manager mode (`-control` without `-mount`) exposes standard gRPC health plus
+  `Probe`, `InitRepository`, `Commit`, `CreateMount`, `GetMount`, `ListMounts`,
+  `Unmount` and `Shutdown`.
 
 ## License
 

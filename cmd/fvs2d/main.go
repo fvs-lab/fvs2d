@@ -8,13 +8,10 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
-	"google.golang.org/grpc"
 
-	pb "fvs2d/internal/controlpb"
 	"fvs2d/internal/runtime"
 )
 
@@ -72,6 +69,9 @@ func run() error {
 		}
 		return runManager(controlAddr)
 	}
+	if controlAddr != "" {
+		return fmt.Errorf("--control cannot be combined with --mount; run the manager without --mount")
+	}
 	if !devFuse || !fmount {
 		return fmt.Errorf("cannot mount (dev_fuse_accessible=%v fusermount_available=%v)", devFuse, fmount)
 	}
@@ -105,49 +105,6 @@ func run() error {
 		return fmt.Errorf("mount: %w", err)
 	}
 
-	shutdownReq := make(chan bool, 1)
-	startTime := time.Now()
-	statusFn := func() *pb.GetStatusResponse {
-		resp := &pb.GetStatusResponse{
-			Mountpoint:    mountPoint,
-			Writable:      root.state.writable(),
-			Upper:         upperDir,
-			NodeCount:     uint32(len(tree.nodes)),
-			BlockSize:     int32(tree.blockSize),
-			Debug:         debug,
-			Pid:           int32(os.Getpid()),
-			UptimeSeconds: int64(time.Since(startTime).Seconds()),
-			ApiVersion:    controlAPIVersion,
-		}
-		if len(lowers) > 0 {
-			for _, layer := range lowers {
-				sel := parseLayerSel(layer)
-				resp.Layers = append(resp.Layers, &pb.Layer{Repo: sel.repo, State: sel.state, Branch: sel.branch})
-			}
-		} else {
-			resp.Repo, resp.State, resp.Branch = repoDir, stateSel, branchSel
-		}
-		return resp
-	}
-
-	var control *grpc.Server
-	if controlAddr != "" {
-		control, err = startControlServer(controlAddr, &controlServer{
-			statusFn: statusFn,
-			shutdownFn: func(lazy bool) {
-				select {
-				case shutdownReq <- lazy:
-				default:
-				}
-			},
-		})
-		if err != nil {
-			_ = server.Unmount()
-			return err
-		}
-		fmt.Fprintf(os.Stderr, "control: serving on %s\n", controlAddr)
-	}
-
 	done := make(chan struct{})
 	go func() {
 		server.Wait()
@@ -160,27 +117,7 @@ func run() error {
 	select {
 	case <-sigCh:
 		err = server.Unmount()
-		if control != nil {
-			control.Stop()
-		}
-	case lazy := <-shutdownReq:
-		if lazy {
-			err = lazyUnmount(mountPoint)
-			if err == nil {
-				<-done
-			} else {
-				err = server.Unmount()
-			}
-		} else {
-			err = server.Unmount()
-		}
-		if control != nil {
-			control.GracefulStop()
-		}
 	case <-done:
-		if control != nil {
-			control.Stop()
-		}
 	}
 	return err
 }
