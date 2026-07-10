@@ -22,6 +22,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	fvsrepo "fvs2/repo"
 	"fvs2d/internal/fvs2dpb"
 	"fvs2d/internal/runtime"
 )
@@ -232,6 +233,33 @@ func (s *fvs2dService) Probe(context.Context, *emptypb.Empty) (*fvs2dpb.ProbeRes
 		DevFuseAccessible:    runtime.DevFuseAccessible(),
 		FusermountAvailable:  runtime.FusermountAvailable(),
 		RunningInFlatpak:     runtime.DetectFlatpak(),
+	}, nil
+}
+
+func (s *fvs2dService) InitRepository(_ context.Context, req *fvs2dpb.InitRepositoryRequest) (*fvs2dpb.Repository, error) {
+	if req.GetRepositoryPath() == "" {
+		return nil, status.Error(codes.InvalidArgument, "repository_path is required")
+	}
+	repository, err := fvsrepo.Init(req.GetRepositoryPath(), int(req.GetBlockSize()))
+	if err != nil {
+		return nil, status.Errorf(codes.FailedPrecondition, "init repository: %v", err)
+	}
+	return &fvs2dpb.Repository{RepositoryPath: repository.Path, BlockSize: uint32(repository.BlockSize)}, nil
+}
+
+func (s *fvs2dService) Commit(_ context.Context, req *fvs2dpb.CommitRequest) (*fvs2dpb.Revision, error) {
+	if req.GetRepositoryPath() == "" {
+		return nil, status.Error(codes.InvalidArgument, "repository_path is required")
+	}
+	revision, err := fvsrepo.Commit(req.GetRepositoryPath(), req.GetMessage(), req.GetAllowEmpty(), nil)
+	if err != nil {
+		return nil, status.Errorf(codes.FailedPrecondition, "commit repository: %v", err)
+	}
+	return &fvs2dpb.Revision{
+		RepositoryPath: req.GetRepositoryPath(),
+		StateId:        revision.StateID,
+		CreatedAt:      timestamppb.New(revision.CreatedAt),
+		FileCount:      uint64(revision.FileCount),
 	}, nil
 }
 

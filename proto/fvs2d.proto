@@ -9,11 +9,36 @@ import "google/protobuf/timestamp.proto";
 
 service Fvs2d {
     rpc Probe(google.protobuf.Empty) returns (ProbeResponse);
+    rpc InitRepository(InitRepositoryRequest) returns (Repository);
+    rpc Commit(CommitRequest) returns (Revision);
     rpc CreateMount(CreateMountRequest) returns (Mount);
     rpc GetMount(GetMountRequest) returns (Mount);
     rpc ListMounts(google.protobuf.Empty) returns (ListMountsResponse);
     rpc Unmount(UnmountRequest) returns (google.protobuf.Empty);
     rpc Shutdown(ShutdownRequest) returns (google.protobuf.Empty);
+}
+
+message InitRepositoryRequest {
+    string repository_path = 1;
+    uint32 block_size = 2;
+}
+
+message Repository {
+    string repository_path = 1;
+    uint32 block_size = 2;
+}
+
+message CommitRequest {
+    string repository_path = 1;
+    string message = 2;
+    bool allow_empty = 3;
+}
+
+message Revision {
+    string repository_path = 1;
+    string state_id = 2;
+    google.protobuf.Timestamp created_at = 3;
+    uint64 file_count = 4;
 }
 
 message ProbeResponse {

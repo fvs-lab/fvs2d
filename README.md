@@ -57,7 +57,8 @@ the `fvs2d.v1.Fvs2d` gRPC API.
   copy-ups are recorded in the upper directory; deletes are stored as
   `.wh.<name>` whiteout markers.
 - Manager mode (`-control` without `-mount`) exposes standard gRPC health plus
-  `Probe`, `CreateMount`, `GetMount`, `ListMounts`, `Unmount` and `Shutdown`.
+  `Probe`, `InitRepository`, `Commit`, `CreateMount`, `GetMount`, `ListMounts`,
+  `Unmount` and `Shutdown`.
 
 ## License
 
