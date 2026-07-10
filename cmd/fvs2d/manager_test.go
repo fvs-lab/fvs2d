@@ -82,12 +82,12 @@ func TestStatesAndRestoreRPCs(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	states, err := service.ListStates(ctx, &fvs2dpb.ListStatesRequest{RepositoryPath: root})
+	states, err := service.ListCommits(ctx, &fvs2dpb.ListCommitsRequest{RepositoryPath: root})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(states.GetStates()) != 2 {
-		t.Fatalf("states = %d, want 2", len(states.GetStates()))
+	if len(states.GetCommits()) != 2 {
+		t.Fatalf("states = %d, want 2", len(states.GetCommits()))
 	}
 
 	restored, err := service.Restore(ctx, &fvs2dpb.RestoreRequest{

@@ -23,7 +23,7 @@ const (
 	Fvs2D_Probe_FullMethodName          = "/fvs2d.v1.Fvs2d/Probe"
 	Fvs2D_InitRepository_FullMethodName = "/fvs2d.v1.Fvs2d/InitRepository"
 	Fvs2D_Commit_FullMethodName         = "/fvs2d.v1.Fvs2d/Commit"
-	Fvs2D_ListStates_FullMethodName     = "/fvs2d.v1.Fvs2d/ListStates"
+	Fvs2D_ListCommits_FullMethodName    = "/fvs2d.v1.Fvs2d/ListCommits"
 	Fvs2D_Restore_FullMethodName        = "/fvs2d.v1.Fvs2d/Restore"
 	Fvs2D_CreateMount_FullMethodName    = "/fvs2d.v1.Fvs2d/CreateMount"
 	Fvs2D_GetMount_FullMethodName       = "/fvs2d.v1.Fvs2d/GetMount"
@@ -38,8 +38,8 @@ const (
 type Fvs2DClient interface {
 	Probe(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ProbeResponse, error)
 	InitRepository(ctx context.Context, in *InitRepositoryRequest, opts ...grpc.CallOption) (*Repository, error)
-	Commit(ctx context.Context, in *CommitRequest, opts ...grpc.CallOption) (*Revision, error)
-	ListStates(ctx context.Context, in *ListStatesRequest, opts ...grpc.CallOption) (*ListStatesResponse, error)
+	Commit(ctx context.Context, in *CommitRequest, opts ...grpc.CallOption) (*Commit, error)
+	ListCommits(ctx context.Context, in *ListCommitsRequest, opts ...grpc.CallOption) (*ListCommitsResponse, error)
 	Restore(ctx context.Context, in *RestoreRequest, opts ...grpc.CallOption) (*RestoreResponse, error)
 	CreateMount(ctx context.Context, in *CreateMountRequest, opts ...grpc.CallOption) (*Mount, error)
 	GetMount(ctx context.Context, in *GetMountRequest, opts ...grpc.CallOption) (*Mount, error)
@@ -76,9 +76,9 @@ func (c *fvs2DClient) InitRepository(ctx context.Context, in *InitRepositoryRequ
 	return out, nil
 }
 
-func (c *fvs2DClient) Commit(ctx context.Context, in *CommitRequest, opts ...grpc.CallOption) (*Revision, error) {
+func (c *fvs2DClient) Commit(ctx context.Context, in *CommitRequest, opts ...grpc.CallOption) (*Commit, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Revision)
+	out := new(Commit)
 	err := c.cc.Invoke(ctx, Fvs2D_Commit_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -86,10 +86,10 @@ func (c *fvs2DClient) Commit(ctx context.Context, in *CommitRequest, opts ...grp
 	return out, nil
 }
 
-func (c *fvs2DClient) ListStates(ctx context.Context, in *ListStatesRequest, opts ...grpc.CallOption) (*ListStatesResponse, error) {
+func (c *fvs2DClient) ListCommits(ctx context.Context, in *ListCommitsRequest, opts ...grpc.CallOption) (*ListCommitsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ListStatesResponse)
-	err := c.cc.Invoke(ctx, Fvs2D_ListStates_FullMethodName, in, out, cOpts...)
+	out := new(ListCommitsResponse)
+	err := c.cc.Invoke(ctx, Fvs2D_ListCommits_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -162,8 +162,8 @@ func (c *fvs2DClient) Shutdown(ctx context.Context, in *ShutdownRequest, opts ..
 type Fvs2DServer interface {
 	Probe(context.Context, *emptypb.Empty) (*ProbeResponse, error)
 	InitRepository(context.Context, *InitRepositoryRequest) (*Repository, error)
-	Commit(context.Context, *CommitRequest) (*Revision, error)
-	ListStates(context.Context, *ListStatesRequest) (*ListStatesResponse, error)
+	Commit(context.Context, *CommitRequest) (*Commit, error)
+	ListCommits(context.Context, *ListCommitsRequest) (*ListCommitsResponse, error)
 	Restore(context.Context, *RestoreRequest) (*RestoreResponse, error)
 	CreateMount(context.Context, *CreateMountRequest) (*Mount, error)
 	GetMount(context.Context, *GetMountRequest) (*Mount, error)
@@ -186,11 +186,11 @@ func (UnimplementedFvs2DServer) Probe(context.Context, *emptypb.Empty) (*ProbeRe
 func (UnimplementedFvs2DServer) InitRepository(context.Context, *InitRepositoryRequest) (*Repository, error) {
 	return nil, status.Error(codes.Unimplemented, "method InitRepository not implemented")
 }
-func (UnimplementedFvs2DServer) Commit(context.Context, *CommitRequest) (*Revision, error) {
+func (UnimplementedFvs2DServer) Commit(context.Context, *CommitRequest) (*Commit, error) {
 	return nil, status.Error(codes.Unimplemented, "method Commit not implemented")
 }
-func (UnimplementedFvs2DServer) ListStates(context.Context, *ListStatesRequest) (*ListStatesResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method ListStates not implemented")
+func (UnimplementedFvs2DServer) ListCommits(context.Context, *ListCommitsRequest) (*ListCommitsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListCommits not implemented")
 }
 func (UnimplementedFvs2DServer) Restore(context.Context, *RestoreRequest) (*RestoreResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Restore not implemented")
@@ -285,20 +285,20 @@ func _Fvs2D_Commit_Handler(srv interface{}, ctx context.Context, dec func(interf
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Fvs2D_ListStates_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ListStatesRequest)
+func _Fvs2D_ListCommits_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListCommitsRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(Fvs2DServer).ListStates(ctx, in)
+		return srv.(Fvs2DServer).ListCommits(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: Fvs2D_ListStates_FullMethodName,
+		FullMethod: Fvs2D_ListCommits_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(Fvs2DServer).ListStates(ctx, req.(*ListStatesRequest))
+		return srv.(Fvs2DServer).ListCommits(ctx, req.(*ListCommitsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -431,8 +431,8 @@ var Fvs2D_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _Fvs2D_Commit_Handler,
 		},
 		{
-			MethodName: "ListStates",
-			Handler:    _Fvs2D_ListStates_Handler,
+			MethodName: "ListCommits",
+			Handler:    _Fvs2D_ListCommits_Handler,
 		},
 		{
 			MethodName: "Restore",

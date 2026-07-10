@@ -69,27 +69,27 @@ func (UnmountMode) EnumDescriptor() ([]byte, []int) {
 	return file_fvs2d_proto_rawDescGZIP(), []int{0}
 }
 
-type ListStatesRequest struct {
+type ListCommitsRequest struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	RepositoryPath string                 `protobuf:"bytes,1,opt,name=repository_path,json=repositoryPath,proto3" json:"repository_path,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
 
-func (x *ListStatesRequest) Reset() {
-	*x = ListStatesRequest{}
+func (x *ListCommitsRequest) Reset() {
+	*x = ListCommitsRequest{}
 	mi := &file_fvs2d_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ListStatesRequest) String() string {
+func (x *ListCommitsRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ListStatesRequest) ProtoMessage() {}
+func (*ListCommitsRequest) ProtoMessage() {}
 
-func (x *ListStatesRequest) ProtoReflect() protoreflect.Message {
+func (x *ListCommitsRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_fvs2d_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -101,41 +101,39 @@ func (x *ListStatesRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ListStatesRequest.ProtoReflect.Descriptor instead.
-func (*ListStatesRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use ListCommitsRequest.ProtoReflect.Descriptor instead.
+func (*ListCommitsRequest) Descriptor() ([]byte, []int) {
 	return file_fvs2d_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *ListStatesRequest) GetRepositoryPath() string {
+func (x *ListCommitsRequest) GetRepositoryPath() string {
 	if x != nil {
 		return x.RepositoryPath
 	}
 	return ""
 }
 
-type State struct {
+type ListCommitsResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	StateId       string                 `protobuf:"bytes,1,opt,name=state_id,json=stateId,proto3" json:"state_id,omitempty"`
-	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	Message       string                 `protobuf:"bytes,3,opt,name=message,proto3" json:"message,omitempty"`
+	Commits       []*Commit              `protobuf:"bytes,1,rep,name=commits,proto3" json:"commits,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *State) Reset() {
-	*x = State{}
+func (x *ListCommitsResponse) Reset() {
+	*x = ListCommitsResponse{}
 	mi := &file_fvs2d_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *State) String() string {
+func (x *ListCommitsResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*State) ProtoMessage() {}
+func (*ListCommitsResponse) ProtoMessage() {}
 
-func (x *State) ProtoReflect() protoreflect.Message {
+func (x *ListCommitsResponse) ProtoReflect() protoreflect.Message {
 	mi := &file_fvs2d_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -147,72 +145,14 @@ func (x *State) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use State.ProtoReflect.Descriptor instead.
-func (*State) Descriptor() ([]byte, []int) {
+// Deprecated: Use ListCommitsResponse.ProtoReflect.Descriptor instead.
+func (*ListCommitsResponse) Descriptor() ([]byte, []int) {
 	return file_fvs2d_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *State) GetStateId() string {
+func (x *ListCommitsResponse) GetCommits() []*Commit {
 	if x != nil {
-		return x.StateId
-	}
-	return ""
-}
-
-func (x *State) GetCreatedAt() *timestamppb.Timestamp {
-	if x != nil {
-		return x.CreatedAt
-	}
-	return nil
-}
-
-func (x *State) GetMessage() string {
-	if x != nil {
-		return x.Message
-	}
-	return ""
-}
-
-type ListStatesResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	States        []*State               `protobuf:"bytes,1,rep,name=states,proto3" json:"states,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ListStatesResponse) Reset() {
-	*x = ListStatesResponse{}
-	mi := &file_fvs2d_proto_msgTypes[2]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ListStatesResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ListStatesResponse) ProtoMessage() {}
-
-func (x *ListStatesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_fvs2d_proto_msgTypes[2]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ListStatesResponse.ProtoReflect.Descriptor instead.
-func (*ListStatesResponse) Descriptor() ([]byte, []int) {
-	return file_fvs2d_proto_rawDescGZIP(), []int{2}
-}
-
-func (x *ListStatesResponse) GetStates() []*State {
-	if x != nil {
-		return x.States
+		return x.Commits
 	}
 	return nil
 }
@@ -233,7 +173,7 @@ type RestoreRequest struct {
 
 func (x *RestoreRequest) Reset() {
 	*x = RestoreRequest{}
-	mi := &file_fvs2d_proto_msgTypes[3]
+	mi := &file_fvs2d_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -245,7 +185,7 @@ func (x *RestoreRequest) String() string {
 func (*RestoreRequest) ProtoMessage() {}
 
 func (x *RestoreRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_fvs2d_proto_msgTypes[3]
+	mi := &file_fvs2d_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -258,7 +198,7 @@ func (x *RestoreRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RestoreRequest.ProtoReflect.Descriptor instead.
 func (*RestoreRequest) Descriptor() ([]byte, []int) {
-	return file_fvs2d_proto_rawDescGZIP(), []int{3}
+	return file_fvs2d_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *RestoreRequest) GetRepositoryPath() string {
@@ -306,7 +246,7 @@ type RestoreResponse struct {
 
 func (x *RestoreResponse) Reset() {
 	*x = RestoreResponse{}
-	mi := &file_fvs2d_proto_msgTypes[4]
+	mi := &file_fvs2d_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -318,7 +258,7 @@ func (x *RestoreResponse) String() string {
 func (*RestoreResponse) ProtoMessage() {}
 
 func (x *RestoreResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_fvs2d_proto_msgTypes[4]
+	mi := &file_fvs2d_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -331,7 +271,7 @@ func (x *RestoreResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RestoreResponse.ProtoReflect.Descriptor instead.
 func (*RestoreResponse) Descriptor() ([]byte, []int) {
-	return file_fvs2d_proto_rawDescGZIP(), []int{4}
+	return file_fvs2d_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *RestoreResponse) GetStateId() string {
@@ -358,7 +298,7 @@ type InitRepositoryRequest struct {
 
 func (x *InitRepositoryRequest) Reset() {
 	*x = InitRepositoryRequest{}
-	mi := &file_fvs2d_proto_msgTypes[5]
+	mi := &file_fvs2d_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -370,7 +310,7 @@ func (x *InitRepositoryRequest) String() string {
 func (*InitRepositoryRequest) ProtoMessage() {}
 
 func (x *InitRepositoryRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_fvs2d_proto_msgTypes[5]
+	mi := &file_fvs2d_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -383,7 +323,7 @@ func (x *InitRepositoryRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InitRepositoryRequest.ProtoReflect.Descriptor instead.
 func (*InitRepositoryRequest) Descriptor() ([]byte, []int) {
-	return file_fvs2d_proto_rawDescGZIP(), []int{5}
+	return file_fvs2d_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *InitRepositoryRequest) GetRepositoryPath() string {
@@ -410,7 +350,7 @@ type Repository struct {
 
 func (x *Repository) Reset() {
 	*x = Repository{}
-	mi := &file_fvs2d_proto_msgTypes[6]
+	mi := &file_fvs2d_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -422,7 +362,7 @@ func (x *Repository) String() string {
 func (*Repository) ProtoMessage() {}
 
 func (x *Repository) ProtoReflect() protoreflect.Message {
-	mi := &file_fvs2d_proto_msgTypes[6]
+	mi := &file_fvs2d_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -435,7 +375,7 @@ func (x *Repository) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Repository.ProtoReflect.Descriptor instead.
 func (*Repository) Descriptor() ([]byte, []int) {
-	return file_fvs2d_proto_rawDescGZIP(), []int{6}
+	return file_fvs2d_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *Repository) GetRepositoryPath() string {
@@ -463,7 +403,7 @@ type CommitRequest struct {
 
 func (x *CommitRequest) Reset() {
 	*x = CommitRequest{}
-	mi := &file_fvs2d_proto_msgTypes[7]
+	mi := &file_fvs2d_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -475,7 +415,7 @@ func (x *CommitRequest) String() string {
 func (*CommitRequest) ProtoMessage() {}
 
 func (x *CommitRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_fvs2d_proto_msgTypes[7]
+	mi := &file_fvs2d_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -488,7 +428,7 @@ func (x *CommitRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommitRequest.ProtoReflect.Descriptor instead.
 func (*CommitRequest) Descriptor() ([]byte, []int) {
-	return file_fvs2d_proto_rawDescGZIP(), []int{7}
+	return file_fvs2d_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *CommitRequest) GetRepositoryPath() string {
@@ -512,31 +452,32 @@ func (x *CommitRequest) GetAllowEmpty() bool {
 	return false
 }
 
-type Revision struct {
+type Commit struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	RepositoryPath string                 `protobuf:"bytes,1,opt,name=repository_path,json=repositoryPath,proto3" json:"repository_path,omitempty"`
 	StateId        string                 `protobuf:"bytes,2,opt,name=state_id,json=stateId,proto3" json:"state_id,omitempty"`
 	CreatedAt      *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	FileCount      uint64                 `protobuf:"varint,4,opt,name=file_count,json=fileCount,proto3" json:"file_count,omitempty"`
+	Message        string                 `protobuf:"bytes,5,opt,name=message,proto3" json:"message,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
 
-func (x *Revision) Reset() {
-	*x = Revision{}
-	mi := &file_fvs2d_proto_msgTypes[8]
+func (x *Commit) Reset() {
+	*x = Commit{}
+	mi := &file_fvs2d_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *Revision) String() string {
+func (x *Commit) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*Revision) ProtoMessage() {}
+func (*Commit) ProtoMessage() {}
 
-func (x *Revision) ProtoReflect() protoreflect.Message {
-	mi := &file_fvs2d_proto_msgTypes[8]
+func (x *Commit) ProtoReflect() protoreflect.Message {
+	mi := &file_fvs2d_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -547,37 +488,44 @@ func (x *Revision) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use Revision.ProtoReflect.Descriptor instead.
-func (*Revision) Descriptor() ([]byte, []int) {
-	return file_fvs2d_proto_rawDescGZIP(), []int{8}
+// Deprecated: Use Commit.ProtoReflect.Descriptor instead.
+func (*Commit) Descriptor() ([]byte, []int) {
+	return file_fvs2d_proto_rawDescGZIP(), []int{7}
 }
 
-func (x *Revision) GetRepositoryPath() string {
+func (x *Commit) GetRepositoryPath() string {
 	if x != nil {
 		return x.RepositoryPath
 	}
 	return ""
 }
 
-func (x *Revision) GetStateId() string {
+func (x *Commit) GetStateId() string {
 	if x != nil {
 		return x.StateId
 	}
 	return ""
 }
 
-func (x *Revision) GetCreatedAt() *timestamppb.Timestamp {
+func (x *Commit) GetCreatedAt() *timestamppb.Timestamp {
 	if x != nil {
 		return x.CreatedAt
 	}
 	return nil
 }
 
-func (x *Revision) GetFileCount() uint64 {
+func (x *Commit) GetFileCount() uint64 {
 	if x != nil {
 		return x.FileCount
 	}
 	return 0
+}
+
+func (x *Commit) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
 }
 
 type ProbeResponse struct {
@@ -595,7 +543,7 @@ type ProbeResponse struct {
 
 func (x *ProbeResponse) Reset() {
 	*x = ProbeResponse{}
-	mi := &file_fvs2d_proto_msgTypes[9]
+	mi := &file_fvs2d_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -607,7 +555,7 @@ func (x *ProbeResponse) String() string {
 func (*ProbeResponse) ProtoMessage() {}
 
 func (x *ProbeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_fvs2d_proto_msgTypes[9]
+	mi := &file_fvs2d_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -620,7 +568,7 @@ func (x *ProbeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProbeResponse.ProtoReflect.Descriptor instead.
 func (*ProbeResponse) Descriptor() ([]byte, []int) {
-	return file_fvs2d_proto_rawDescGZIP(), []int{9}
+	return file_fvs2d_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *ProbeResponse) GetDaemonVersion() string {
@@ -672,32 +620,32 @@ func (x *ProbeResponse) GetRunningInFlatpak() bool {
 	return false
 }
 
-type RevisionSelector struct {
+type CommitSelector struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Types that are valid to be assigned to Selector:
 	//
-	//	*RevisionSelector_StateIdOrPrefix
-	//	*RevisionSelector_Branch
-	Selector      isRevisionSelector_Selector `protobuf_oneof:"selector"`
+	//	*CommitSelector_StateIdOrPrefix
+	//	*CommitSelector_Branch
+	Selector      isCommitSelector_Selector `protobuf_oneof:"selector"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *RevisionSelector) Reset() {
-	*x = RevisionSelector{}
-	mi := &file_fvs2d_proto_msgTypes[10]
+func (x *CommitSelector) Reset() {
+	*x = CommitSelector{}
+	mi := &file_fvs2d_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *RevisionSelector) String() string {
+func (x *CommitSelector) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*RevisionSelector) ProtoMessage() {}
+func (*CommitSelector) ProtoMessage() {}
 
-func (x *RevisionSelector) ProtoReflect() protoreflect.Message {
-	mi := &file_fvs2d_proto_msgTypes[10]
+func (x *CommitSelector) ProtoReflect() protoreflect.Message {
+	mi := &file_fvs2d_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -708,63 +656,63 @@ func (x *RevisionSelector) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use RevisionSelector.ProtoReflect.Descriptor instead.
-func (*RevisionSelector) Descriptor() ([]byte, []int) {
-	return file_fvs2d_proto_rawDescGZIP(), []int{10}
+// Deprecated: Use CommitSelector.ProtoReflect.Descriptor instead.
+func (*CommitSelector) Descriptor() ([]byte, []int) {
+	return file_fvs2d_proto_rawDescGZIP(), []int{9}
 }
 
-func (x *RevisionSelector) GetSelector() isRevisionSelector_Selector {
+func (x *CommitSelector) GetSelector() isCommitSelector_Selector {
 	if x != nil {
 		return x.Selector
 	}
 	return nil
 }
 
-func (x *RevisionSelector) GetStateIdOrPrefix() string {
+func (x *CommitSelector) GetStateIdOrPrefix() string {
 	if x != nil {
-		if x, ok := x.Selector.(*RevisionSelector_StateIdOrPrefix); ok {
+		if x, ok := x.Selector.(*CommitSelector_StateIdOrPrefix); ok {
 			return x.StateIdOrPrefix
 		}
 	}
 	return ""
 }
 
-func (x *RevisionSelector) GetBranch() string {
+func (x *CommitSelector) GetBranch() string {
 	if x != nil {
-		if x, ok := x.Selector.(*RevisionSelector_Branch); ok {
+		if x, ok := x.Selector.(*CommitSelector_Branch); ok {
 			return x.Branch
 		}
 	}
 	return ""
 }
 
-type isRevisionSelector_Selector interface {
-	isRevisionSelector_Selector()
+type isCommitSelector_Selector interface {
+	isCommitSelector_Selector()
 }
 
-type RevisionSelector_StateIdOrPrefix struct {
+type CommitSelector_StateIdOrPrefix struct {
 	StateIdOrPrefix string `protobuf:"bytes,1,opt,name=state_id_or_prefix,json=stateIdOrPrefix,proto3,oneof"`
 }
 
-type RevisionSelector_Branch struct {
+type CommitSelector_Branch struct {
 	Branch string `protobuf:"bytes,2,opt,name=branch,proto3,oneof"`
 }
 
-func (*RevisionSelector_StateIdOrPrefix) isRevisionSelector_Selector() {}
+func (*CommitSelector_StateIdOrPrefix) isCommitSelector_Selector() {}
 
-func (*RevisionSelector_Branch) isRevisionSelector_Selector() {}
+func (*CommitSelector_Branch) isCommitSelector_Selector() {}
 
 type Layer struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	RepositoryPath string                 `protobuf:"bytes,1,opt,name=repository_path,json=repositoryPath,proto3" json:"repository_path,omitempty"`
-	Revision       *RevisionSelector      `protobuf:"bytes,2,opt,name=revision,proto3" json:"revision,omitempty"`
+	Revision       *CommitSelector        `protobuf:"bytes,2,opt,name=revision,proto3" json:"revision,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
 
 func (x *Layer) Reset() {
 	*x = Layer{}
-	mi := &file_fvs2d_proto_msgTypes[11]
+	mi := &file_fvs2d_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -776,7 +724,7 @@ func (x *Layer) String() string {
 func (*Layer) ProtoMessage() {}
 
 func (x *Layer) ProtoReflect() protoreflect.Message {
-	mi := &file_fvs2d_proto_msgTypes[11]
+	mi := &file_fvs2d_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -789,7 +737,7 @@ func (x *Layer) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Layer.ProtoReflect.Descriptor instead.
 func (*Layer) Descriptor() ([]byte, []int) {
-	return file_fvs2d_proto_rawDescGZIP(), []int{11}
+	return file_fvs2d_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *Layer) GetRepositoryPath() string {
@@ -799,7 +747,7 @@ func (x *Layer) GetRepositoryPath() string {
 	return ""
 }
 
-func (x *Layer) GetRevision() *RevisionSelector {
+func (x *Layer) GetRevision() *CommitSelector {
 	if x != nil {
 		return x.Revision
 	}
@@ -818,7 +766,7 @@ type MountSpec struct {
 
 func (x *MountSpec) Reset() {
 	*x = MountSpec{}
-	mi := &file_fvs2d_proto_msgTypes[12]
+	mi := &file_fvs2d_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -830,7 +778,7 @@ func (x *MountSpec) String() string {
 func (*MountSpec) ProtoMessage() {}
 
 func (x *MountSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_fvs2d_proto_msgTypes[12]
+	mi := &file_fvs2d_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -843,7 +791,7 @@ func (x *MountSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MountSpec.ProtoReflect.Descriptor instead.
 func (*MountSpec) Descriptor() ([]byte, []int) {
-	return file_fvs2d_proto_rawDescGZIP(), []int{12}
+	return file_fvs2d_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *MountSpec) GetMountPoint() string {
@@ -883,7 +831,7 @@ type CreateMountRequest struct {
 
 func (x *CreateMountRequest) Reset() {
 	*x = CreateMountRequest{}
-	mi := &file_fvs2d_proto_msgTypes[13]
+	mi := &file_fvs2d_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -895,7 +843,7 @@ func (x *CreateMountRequest) String() string {
 func (*CreateMountRequest) ProtoMessage() {}
 
 func (x *CreateMountRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_fvs2d_proto_msgTypes[13]
+	mi := &file_fvs2d_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -908,7 +856,7 @@ func (x *CreateMountRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateMountRequest.ProtoReflect.Descriptor instead.
 func (*CreateMountRequest) Descriptor() ([]byte, []int) {
-	return file_fvs2d_proto_rawDescGZIP(), []int{13}
+	return file_fvs2d_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *CreateMountRequest) GetSpec() *MountSpec {
@@ -930,7 +878,7 @@ type ResolvedLayer struct {
 
 func (x *ResolvedLayer) Reset() {
 	*x = ResolvedLayer{}
-	mi := &file_fvs2d_proto_msgTypes[14]
+	mi := &file_fvs2d_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -942,7 +890,7 @@ func (x *ResolvedLayer) String() string {
 func (*ResolvedLayer) ProtoMessage() {}
 
 func (x *ResolvedLayer) ProtoReflect() protoreflect.Message {
-	mi := &file_fvs2d_proto_msgTypes[14]
+	mi := &file_fvs2d_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -955,7 +903,7 @@ func (x *ResolvedLayer) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResolvedLayer.ProtoReflect.Descriptor instead.
 func (*ResolvedLayer) Descriptor() ([]byte, []int) {
-	return file_fvs2d_proto_rawDescGZIP(), []int{14}
+	return file_fvs2d_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *ResolvedLayer) GetRepositoryPath() string {
@@ -999,7 +947,7 @@ type Mount struct {
 
 func (x *Mount) Reset() {
 	*x = Mount{}
-	mi := &file_fvs2d_proto_msgTypes[15]
+	mi := &file_fvs2d_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1011,7 +959,7 @@ func (x *Mount) String() string {
 func (*Mount) ProtoMessage() {}
 
 func (x *Mount) ProtoReflect() protoreflect.Message {
-	mi := &file_fvs2d_proto_msgTypes[15]
+	mi := &file_fvs2d_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1024,7 +972,7 @@ func (x *Mount) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Mount.ProtoReflect.Descriptor instead.
 func (*Mount) Descriptor() ([]byte, []int) {
-	return file_fvs2d_proto_rawDescGZIP(), []int{15}
+	return file_fvs2d_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *Mount) GetId() string {
@@ -1071,7 +1019,7 @@ type GetMountRequest struct {
 
 func (x *GetMountRequest) Reset() {
 	*x = GetMountRequest{}
-	mi := &file_fvs2d_proto_msgTypes[16]
+	mi := &file_fvs2d_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1083,7 +1031,7 @@ func (x *GetMountRequest) String() string {
 func (*GetMountRequest) ProtoMessage() {}
 
 func (x *GetMountRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_fvs2d_proto_msgTypes[16]
+	mi := &file_fvs2d_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1096,7 +1044,7 @@ func (x *GetMountRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetMountRequest.ProtoReflect.Descriptor instead.
 func (*GetMountRequest) Descriptor() ([]byte, []int) {
-	return file_fvs2d_proto_rawDescGZIP(), []int{16}
+	return file_fvs2d_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *GetMountRequest) GetMountId() string {
@@ -1115,7 +1063,7 @@ type ListMountsResponse struct {
 
 func (x *ListMountsResponse) Reset() {
 	*x = ListMountsResponse{}
-	mi := &file_fvs2d_proto_msgTypes[17]
+	mi := &file_fvs2d_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1127,7 +1075,7 @@ func (x *ListMountsResponse) String() string {
 func (*ListMountsResponse) ProtoMessage() {}
 
 func (x *ListMountsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_fvs2d_proto_msgTypes[17]
+	mi := &file_fvs2d_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1140,7 +1088,7 @@ func (x *ListMountsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListMountsResponse.ProtoReflect.Descriptor instead.
 func (*ListMountsResponse) Descriptor() ([]byte, []int) {
-	return file_fvs2d_proto_rawDescGZIP(), []int{17}
+	return file_fvs2d_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *ListMountsResponse) GetMounts() []*Mount {
@@ -1160,7 +1108,7 @@ type UnmountRequest struct {
 
 func (x *UnmountRequest) Reset() {
 	*x = UnmountRequest{}
-	mi := &file_fvs2d_proto_msgTypes[18]
+	mi := &file_fvs2d_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1172,7 +1120,7 @@ func (x *UnmountRequest) String() string {
 func (*UnmountRequest) ProtoMessage() {}
 
 func (x *UnmountRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_fvs2d_proto_msgTypes[18]
+	mi := &file_fvs2d_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1185,7 +1133,7 @@ func (x *UnmountRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UnmountRequest.ProtoReflect.Descriptor instead.
 func (*UnmountRequest) Descriptor() ([]byte, []int) {
-	return file_fvs2d_proto_rawDescGZIP(), []int{18}
+	return file_fvs2d_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *UnmountRequest) GetMountId() string {
@@ -1211,7 +1159,7 @@ type ShutdownRequest struct {
 
 func (x *ShutdownRequest) Reset() {
 	*x = ShutdownRequest{}
-	mi := &file_fvs2d_proto_msgTypes[19]
+	mi := &file_fvs2d_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1223,7 +1171,7 @@ func (x *ShutdownRequest) String() string {
 func (*ShutdownRequest) ProtoMessage() {}
 
 func (x *ShutdownRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_fvs2d_proto_msgTypes[19]
+	mi := &file_fvs2d_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1236,7 +1184,7 @@ func (x *ShutdownRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ShutdownRequest.ProtoReflect.Descriptor instead.
 func (*ShutdownRequest) Descriptor() ([]byte, []int) {
-	return file_fvs2d_proto_rawDescGZIP(), []int{19}
+	return file_fvs2d_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *ShutdownRequest) GetMode() UnmountMode {
@@ -1250,16 +1198,11 @@ var File_fvs2d_proto protoreflect.FileDescriptor
 
 const file_fvs2d_proto_rawDesc = "" +
 	"\n" +
-	"\vfvs2d.proto\x12\bfvs2d.v1\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"<\n" +
-	"\x11ListStatesRequest\x12'\n" +
-	"\x0frepository_path\x18\x01 \x01(\tR\x0erepositoryPath\"w\n" +
-	"\x05State\x12\x19\n" +
-	"\bstate_id\x18\x01 \x01(\tR\astateId\x129\n" +
-	"\n" +
-	"created_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12\x18\n" +
-	"\amessage\x18\x03 \x01(\tR\amessage\"=\n" +
-	"\x12ListStatesResponse\x12'\n" +
-	"\x06states\x18\x01 \x03(\v2\x0f.fvs2d.v1.StateR\x06states\"\xd7\x01\n" +
+	"\vfvs2d.proto\x12\bfvs2d.v1\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"=\n" +
+	"\x12ListCommitsRequest\x12'\n" +
+	"\x0frepository_path\x18\x01 \x01(\tR\x0erepositoryPath\"A\n" +
+	"\x13ListCommitsResponse\x12*\n" +
+	"\acommits\x18\x01 \x03(\v2\x10.fvs2d.v1.CommitR\acommits\"\xd7\x01\n" +
 	"\x0eRestoreRequest\x12'\n" +
 	"\x0frepository_path\x18\x01 \x01(\tR\x0erepositoryPath\x12+\n" +
 	"\x12state_id_or_prefix\x18\x02 \x01(\tR\x0fstateIdOrPrefix\x12.\n" +
@@ -1283,14 +1226,15 @@ const file_fvs2d_proto_rawDesc = "" +
 	"\x0frepository_path\x18\x01 \x01(\tR\x0erepositoryPath\x12\x18\n" +
 	"\amessage\x18\x02 \x01(\tR\amessage\x12\x1f\n" +
 	"\vallow_empty\x18\x03 \x01(\bR\n" +
-	"allowEmpty\"\xa8\x01\n" +
-	"\bRevision\x12'\n" +
+	"allowEmpty\"\xc0\x01\n" +
+	"\x06Commit\x12'\n" +
 	"\x0frepository_path\x18\x01 \x01(\tR\x0erepositoryPath\x12\x19\n" +
 	"\bstate_id\x18\x02 \x01(\tR\astateId\x129\n" +
 	"\n" +
 	"created_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12\x1d\n" +
 	"\n" +
-	"file_count\x18\x04 \x01(\x04R\tfileCount\"\xca\x02\n" +
+	"file_count\x18\x04 \x01(\x04R\tfileCount\x12\x18\n" +
+	"\amessage\x18\x05 \x01(\tR\amessage\"\xca\x02\n" +
 	"\rProbeResponse\x12%\n" +
 	"\x0edaemon_version\x18\x01 \x01(\tR\rdaemonVersion\x12\x10\n" +
 	"\x03pid\x18\x02 \x01(\rR\x03pid\x129\n" +
@@ -1299,15 +1243,15 @@ const file_fvs2d_proto_rawDesc = "" +
 	"\x16fuse_backend_available\x18\x04 \x01(\bR\x14fuseBackendAvailable\x12.\n" +
 	"\x13dev_fuse_accessible\x18\x05 \x01(\bR\x11devFuseAccessible\x121\n" +
 	"\x14fusermount_available\x18\x06 \x01(\bR\x13fusermountAvailable\x12,\n" +
-	"\x12running_in_flatpak\x18\a \x01(\bR\x10runningInFlatpak\"g\n" +
-	"\x10RevisionSelector\x12-\n" +
+	"\x12running_in_flatpak\x18\a \x01(\bR\x10runningInFlatpak\"e\n" +
+	"\x0eCommitSelector\x12-\n" +
 	"\x12state_id_or_prefix\x18\x01 \x01(\tH\x00R\x0fstateIdOrPrefix\x12\x18\n" +
 	"\x06branch\x18\x02 \x01(\tH\x00R\x06branchB\n" +
 	"\n" +
-	"\bselector\"h\n" +
+	"\bselector\"f\n" +
 	"\x05Layer\x12'\n" +
-	"\x0frepository_path\x18\x01 \x01(\tR\x0erepositoryPath\x126\n" +
-	"\brevision\x18\x02 \x01(\v2\x1a.fvs2d.v1.RevisionSelectorR\brevision\"\x9e\x01\n" +
+	"\x0frepository_path\x18\x01 \x01(\tR\x0erepositoryPath\x124\n" +
+	"\brevision\x18\x02 \x01(\v2\x18.fvs2d.v1.CommitSelectorR\brevision\"\x9e\x01\n" +
 	"\tMountSpec\x12\x1f\n" +
 	"\vmount_point\x18\x01 \x01(\tR\n" +
 	"mountPoint\x12'\n" +
@@ -1344,13 +1288,12 @@ const file_fvs2d_proto_rawDesc = "" +
 	"\x04mode\x18\x01 \x01(\x0e2\x15.fvs2d.v1.UnmountModeR\x04mode*=\n" +
 	"\vUnmountMode\x12\x17\n" +
 	"\x13UNMOUNT_MODE_NORMAL\x10\x00\x12\x15\n" +
-	"\x11UNMOUNT_MODE_LAZY\x10\x012\x80\x05\n" +
+	"\x11UNMOUNT_MODE_LAZY\x10\x012\x81\x05\n" +
 	"\x05Fvs2d\x128\n" +
 	"\x05Probe\x12\x16.google.protobuf.Empty\x1a\x17.fvs2d.v1.ProbeResponse\x12G\n" +
-	"\x0eInitRepository\x12\x1f.fvs2d.v1.InitRepositoryRequest\x1a\x14.fvs2d.v1.Repository\x125\n" +
-	"\x06Commit\x12\x17.fvs2d.v1.CommitRequest\x1a\x12.fvs2d.v1.Revision\x12G\n" +
-	"\n" +
-	"ListStates\x12\x1b.fvs2d.v1.ListStatesRequest\x1a\x1c.fvs2d.v1.ListStatesResponse\x12>\n" +
+	"\x0eInitRepository\x12\x1f.fvs2d.v1.InitRepositoryRequest\x1a\x14.fvs2d.v1.Repository\x123\n" +
+	"\x06Commit\x12\x17.fvs2d.v1.CommitRequest\x1a\x10.fvs2d.v1.Commit\x12J\n" +
+	"\vListCommits\x12\x1c.fvs2d.v1.ListCommitsRequest\x1a\x1d.fvs2d.v1.ListCommitsResponse\x12>\n" +
 	"\aRestore\x12\x18.fvs2d.v1.RestoreRequest\x1a\x19.fvs2d.v1.RestoreResponse\x12<\n" +
 	"\vCreateMount\x12\x1c.fvs2d.v1.CreateMountRequest\x1a\x0f.fvs2d.v1.Mount\x126\n" +
 	"\bGetMount\x12\x19.fvs2d.v1.GetMountRequest\x1a\x0f.fvs2d.v1.Mount\x12B\n" +
@@ -1372,71 +1315,69 @@ func file_fvs2d_proto_rawDescGZIP() []byte {
 }
 
 var file_fvs2d_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_fvs2d_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
+var file_fvs2d_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
 var file_fvs2d_proto_goTypes = []any{
 	(UnmountMode)(0),              // 0: fvs2d.v1.UnmountMode
-	(*ListStatesRequest)(nil),     // 1: fvs2d.v1.ListStatesRequest
-	(*State)(nil),                 // 2: fvs2d.v1.State
-	(*ListStatesResponse)(nil),    // 3: fvs2d.v1.ListStatesResponse
-	(*RestoreRequest)(nil),        // 4: fvs2d.v1.RestoreRequest
-	(*RestoreResponse)(nil),       // 5: fvs2d.v1.RestoreResponse
-	(*InitRepositoryRequest)(nil), // 6: fvs2d.v1.InitRepositoryRequest
-	(*Repository)(nil),            // 7: fvs2d.v1.Repository
-	(*CommitRequest)(nil),         // 8: fvs2d.v1.CommitRequest
-	(*Revision)(nil),              // 9: fvs2d.v1.Revision
-	(*ProbeResponse)(nil),         // 10: fvs2d.v1.ProbeResponse
-	(*RevisionSelector)(nil),      // 11: fvs2d.v1.RevisionSelector
-	(*Layer)(nil),                 // 12: fvs2d.v1.Layer
-	(*MountSpec)(nil),             // 13: fvs2d.v1.MountSpec
-	(*CreateMountRequest)(nil),    // 14: fvs2d.v1.CreateMountRequest
-	(*ResolvedLayer)(nil),         // 15: fvs2d.v1.ResolvedLayer
-	(*Mount)(nil),                 // 16: fvs2d.v1.Mount
-	(*GetMountRequest)(nil),       // 17: fvs2d.v1.GetMountRequest
-	(*ListMountsResponse)(nil),    // 18: fvs2d.v1.ListMountsResponse
-	(*UnmountRequest)(nil),        // 19: fvs2d.v1.UnmountRequest
-	(*ShutdownRequest)(nil),       // 20: fvs2d.v1.ShutdownRequest
-	(*timestamppb.Timestamp)(nil), // 21: google.protobuf.Timestamp
-	(*emptypb.Empty)(nil),         // 22: google.protobuf.Empty
+	(*ListCommitsRequest)(nil),    // 1: fvs2d.v1.ListCommitsRequest
+	(*ListCommitsResponse)(nil),   // 2: fvs2d.v1.ListCommitsResponse
+	(*RestoreRequest)(nil),        // 3: fvs2d.v1.RestoreRequest
+	(*RestoreResponse)(nil),       // 4: fvs2d.v1.RestoreResponse
+	(*InitRepositoryRequest)(nil), // 5: fvs2d.v1.InitRepositoryRequest
+	(*Repository)(nil),            // 6: fvs2d.v1.Repository
+	(*CommitRequest)(nil),         // 7: fvs2d.v1.CommitRequest
+	(*Commit)(nil),                // 8: fvs2d.v1.Commit
+	(*ProbeResponse)(nil),         // 9: fvs2d.v1.ProbeResponse
+	(*CommitSelector)(nil),        // 10: fvs2d.v1.CommitSelector
+	(*Layer)(nil),                 // 11: fvs2d.v1.Layer
+	(*MountSpec)(nil),             // 12: fvs2d.v1.MountSpec
+	(*CreateMountRequest)(nil),    // 13: fvs2d.v1.CreateMountRequest
+	(*ResolvedLayer)(nil),         // 14: fvs2d.v1.ResolvedLayer
+	(*Mount)(nil),                 // 15: fvs2d.v1.Mount
+	(*GetMountRequest)(nil),       // 16: fvs2d.v1.GetMountRequest
+	(*ListMountsResponse)(nil),    // 17: fvs2d.v1.ListMountsResponse
+	(*UnmountRequest)(nil),        // 18: fvs2d.v1.UnmountRequest
+	(*ShutdownRequest)(nil),       // 19: fvs2d.v1.ShutdownRequest
+	(*timestamppb.Timestamp)(nil), // 20: google.protobuf.Timestamp
+	(*emptypb.Empty)(nil),         // 21: google.protobuf.Empty
 }
 var file_fvs2d_proto_depIdxs = []int32{
-	21, // 0: fvs2d.v1.State.created_at:type_name -> google.protobuf.Timestamp
-	2,  // 1: fvs2d.v1.ListStatesResponse.states:type_name -> fvs2d.v1.State
-	21, // 2: fvs2d.v1.Revision.created_at:type_name -> google.protobuf.Timestamp
-	21, // 3: fvs2d.v1.ProbeResponse.started_at:type_name -> google.protobuf.Timestamp
-	11, // 4: fvs2d.v1.Layer.revision:type_name -> fvs2d.v1.RevisionSelector
-	12, // 5: fvs2d.v1.MountSpec.layers:type_name -> fvs2d.v1.Layer
-	13, // 6: fvs2d.v1.CreateMountRequest.spec:type_name -> fvs2d.v1.MountSpec
-	13, // 7: fvs2d.v1.Mount.spec:type_name -> fvs2d.v1.MountSpec
-	15, // 8: fvs2d.v1.Mount.resolved_layers:type_name -> fvs2d.v1.ResolvedLayer
-	21, // 9: fvs2d.v1.Mount.mounted_at:type_name -> google.protobuf.Timestamp
-	16, // 10: fvs2d.v1.ListMountsResponse.mounts:type_name -> fvs2d.v1.Mount
-	0,  // 11: fvs2d.v1.UnmountRequest.mode:type_name -> fvs2d.v1.UnmountMode
-	0,  // 12: fvs2d.v1.ShutdownRequest.mode:type_name -> fvs2d.v1.UnmountMode
-	22, // 13: fvs2d.v1.Fvs2d.Probe:input_type -> google.protobuf.Empty
-	6,  // 14: fvs2d.v1.Fvs2d.InitRepository:input_type -> fvs2d.v1.InitRepositoryRequest
-	8,  // 15: fvs2d.v1.Fvs2d.Commit:input_type -> fvs2d.v1.CommitRequest
-	1,  // 16: fvs2d.v1.Fvs2d.ListStates:input_type -> fvs2d.v1.ListStatesRequest
-	4,  // 17: fvs2d.v1.Fvs2d.Restore:input_type -> fvs2d.v1.RestoreRequest
-	14, // 18: fvs2d.v1.Fvs2d.CreateMount:input_type -> fvs2d.v1.CreateMountRequest
-	17, // 19: fvs2d.v1.Fvs2d.GetMount:input_type -> fvs2d.v1.GetMountRequest
-	22, // 20: fvs2d.v1.Fvs2d.ListMounts:input_type -> google.protobuf.Empty
-	19, // 21: fvs2d.v1.Fvs2d.Unmount:input_type -> fvs2d.v1.UnmountRequest
-	20, // 22: fvs2d.v1.Fvs2d.Shutdown:input_type -> fvs2d.v1.ShutdownRequest
-	10, // 23: fvs2d.v1.Fvs2d.Probe:output_type -> fvs2d.v1.ProbeResponse
-	7,  // 24: fvs2d.v1.Fvs2d.InitRepository:output_type -> fvs2d.v1.Repository
-	9,  // 25: fvs2d.v1.Fvs2d.Commit:output_type -> fvs2d.v1.Revision
-	3,  // 26: fvs2d.v1.Fvs2d.ListStates:output_type -> fvs2d.v1.ListStatesResponse
-	5,  // 27: fvs2d.v1.Fvs2d.Restore:output_type -> fvs2d.v1.RestoreResponse
-	16, // 28: fvs2d.v1.Fvs2d.CreateMount:output_type -> fvs2d.v1.Mount
-	16, // 29: fvs2d.v1.Fvs2d.GetMount:output_type -> fvs2d.v1.Mount
-	18, // 30: fvs2d.v1.Fvs2d.ListMounts:output_type -> fvs2d.v1.ListMountsResponse
-	22, // 31: fvs2d.v1.Fvs2d.Unmount:output_type -> google.protobuf.Empty
-	22, // 32: fvs2d.v1.Fvs2d.Shutdown:output_type -> google.protobuf.Empty
-	23, // [23:33] is the sub-list for method output_type
-	13, // [13:23] is the sub-list for method input_type
-	13, // [13:13] is the sub-list for extension type_name
-	13, // [13:13] is the sub-list for extension extendee
-	0,  // [0:13] is the sub-list for field type_name
+	8,  // 0: fvs2d.v1.ListCommitsResponse.commits:type_name -> fvs2d.v1.Commit
+	20, // 1: fvs2d.v1.Commit.created_at:type_name -> google.protobuf.Timestamp
+	20, // 2: fvs2d.v1.ProbeResponse.started_at:type_name -> google.protobuf.Timestamp
+	10, // 3: fvs2d.v1.Layer.revision:type_name -> fvs2d.v1.CommitSelector
+	11, // 4: fvs2d.v1.MountSpec.layers:type_name -> fvs2d.v1.Layer
+	12, // 5: fvs2d.v1.CreateMountRequest.spec:type_name -> fvs2d.v1.MountSpec
+	12, // 6: fvs2d.v1.Mount.spec:type_name -> fvs2d.v1.MountSpec
+	14, // 7: fvs2d.v1.Mount.resolved_layers:type_name -> fvs2d.v1.ResolvedLayer
+	20, // 8: fvs2d.v1.Mount.mounted_at:type_name -> google.protobuf.Timestamp
+	15, // 9: fvs2d.v1.ListMountsResponse.mounts:type_name -> fvs2d.v1.Mount
+	0,  // 10: fvs2d.v1.UnmountRequest.mode:type_name -> fvs2d.v1.UnmountMode
+	0,  // 11: fvs2d.v1.ShutdownRequest.mode:type_name -> fvs2d.v1.UnmountMode
+	21, // 12: fvs2d.v1.Fvs2d.Probe:input_type -> google.protobuf.Empty
+	5,  // 13: fvs2d.v1.Fvs2d.InitRepository:input_type -> fvs2d.v1.InitRepositoryRequest
+	7,  // 14: fvs2d.v1.Fvs2d.Commit:input_type -> fvs2d.v1.CommitRequest
+	1,  // 15: fvs2d.v1.Fvs2d.ListCommits:input_type -> fvs2d.v1.ListCommitsRequest
+	3,  // 16: fvs2d.v1.Fvs2d.Restore:input_type -> fvs2d.v1.RestoreRequest
+	13, // 17: fvs2d.v1.Fvs2d.CreateMount:input_type -> fvs2d.v1.CreateMountRequest
+	16, // 18: fvs2d.v1.Fvs2d.GetMount:input_type -> fvs2d.v1.GetMountRequest
+	21, // 19: fvs2d.v1.Fvs2d.ListMounts:input_type -> google.protobuf.Empty
+	18, // 20: fvs2d.v1.Fvs2d.Unmount:input_type -> fvs2d.v1.UnmountRequest
+	19, // 21: fvs2d.v1.Fvs2d.Shutdown:input_type -> fvs2d.v1.ShutdownRequest
+	9,  // 22: fvs2d.v1.Fvs2d.Probe:output_type -> fvs2d.v1.ProbeResponse
+	6,  // 23: fvs2d.v1.Fvs2d.InitRepository:output_type -> fvs2d.v1.Repository
+	8,  // 24: fvs2d.v1.Fvs2d.Commit:output_type -> fvs2d.v1.Commit
+	2,  // 25: fvs2d.v1.Fvs2d.ListCommits:output_type -> fvs2d.v1.ListCommitsResponse
+	4,  // 26: fvs2d.v1.Fvs2d.Restore:output_type -> fvs2d.v1.RestoreResponse
+	15, // 27: fvs2d.v1.Fvs2d.CreateMount:output_type -> fvs2d.v1.Mount
+	15, // 28: fvs2d.v1.Fvs2d.GetMount:output_type -> fvs2d.v1.Mount
+	17, // 29: fvs2d.v1.Fvs2d.ListMounts:output_type -> fvs2d.v1.ListMountsResponse
+	21, // 30: fvs2d.v1.Fvs2d.Unmount:output_type -> google.protobuf.Empty
+	21, // 31: fvs2d.v1.Fvs2d.Shutdown:output_type -> google.protobuf.Empty
+	22, // [22:32] is the sub-list for method output_type
+	12, // [12:22] is the sub-list for method input_type
+	12, // [12:12] is the sub-list for extension type_name
+	12, // [12:12] is the sub-list for extension extendee
+	0,  // [0:12] is the sub-list for field type_name
 }
 
 func init() { file_fvs2d_proto_init() }
@@ -1444,19 +1385,19 @@ func file_fvs2d_proto_init() {
 	if File_fvs2d_proto != nil {
 		return
 	}
-	file_fvs2d_proto_msgTypes[3].OneofWrappers = []any{}
-	file_fvs2d_proto_msgTypes[10].OneofWrappers = []any{
-		(*RevisionSelector_StateIdOrPrefix)(nil),
-		(*RevisionSelector_Branch)(nil),
+	file_fvs2d_proto_msgTypes[2].OneofWrappers = []any{}
+	file_fvs2d_proto_msgTypes[9].OneofWrappers = []any{
+		(*CommitSelector_StateIdOrPrefix)(nil),
+		(*CommitSelector_Branch)(nil),
 	}
-	file_fvs2d_proto_msgTypes[12].OneofWrappers = []any{}
+	file_fvs2d_proto_msgTypes[11].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_fvs2d_proto_rawDesc), len(file_fvs2d_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   20,
+			NumMessages:   19,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

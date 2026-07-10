@@ -73,9 +73,9 @@ func newMountID() (string, error) {
 func selFromLayer(l *fvs2dpb.Layer) layerSel {
 	sel := layerSel{repo: l.GetRepositoryPath()}
 	switch rev := l.GetRevision().GetSelector().(type) {
-	case *fvs2dpb.RevisionSelector_StateIdOrPrefix:
+	case *fvs2dpb.CommitSelector_StateIdOrPrefix:
 		sel.state = rev.StateIdOrPrefix
-	case *fvs2dpb.RevisionSelector_Branch:
+	case *fvs2dpb.CommitSelector_Branch:
 		sel.branch = rev.Branch
 	}
 	return sel
@@ -247,39 +247,41 @@ func (s *fvs2dService) InitRepository(_ context.Context, req *fvs2dpb.InitReposi
 	return &fvs2dpb.Repository{RepositoryPath: repository.Path, BlockSize: uint32(repository.BlockSize)}, nil
 }
 
-func (s *fvs2dService) Commit(_ context.Context, req *fvs2dpb.CommitRequest) (*fvs2dpb.Revision, error) {
+func (s *fvs2dService) Commit(_ context.Context, req *fvs2dpb.CommitRequest) (*fvs2dpb.Commit, error) {
 	if req.GetRepositoryPath() == "" {
 		return nil, status.Error(codes.InvalidArgument, "repository_path is required")
 	}
-	revision, err := fvsrepo.Commit(req.GetRepositoryPath(), req.GetMessage(), req.GetAllowEmpty(), nil)
+	commit, err := fvsrepo.Commit(req.GetRepositoryPath(), req.GetMessage(), req.GetAllowEmpty(), nil)
 	if err != nil {
 		return nil, status.Errorf(codes.FailedPrecondition, "commit repository: %v", err)
 	}
-	return &fvs2dpb.Revision{
+	return &fvs2dpb.Commit{
 		RepositoryPath: req.GetRepositoryPath(),
-		StateId:        revision.StateID,
-		CreatedAt:      timestamppb.New(revision.CreatedAt),
-		FileCount:      uint64(revision.FileCount),
+		StateId:        commit.StateID,
+		CreatedAt:      timestamppb.New(commit.CreatedAt),
+		FileCount:      uint64(commit.FileCount),
+		Message:        req.GetMessage(),
 	}, nil
 }
 
-func (s *fvs2dService) ListStates(_ context.Context, req *fvs2dpb.ListStatesRequest) (*fvs2dpb.ListStatesResponse, error) {
+func (s *fvs2dService) ListCommits(_ context.Context, req *fvs2dpb.ListCommitsRequest) (*fvs2dpb.ListCommitsResponse, error) {
 	if req.GetRepositoryPath() == "" {
 		return nil, status.Error(codes.InvalidArgument, "repository_path is required")
 	}
 	states, err := fvsrepo.States(req.GetRepositoryPath())
 	if err != nil {
-		return nil, status.Errorf(codes.FailedPrecondition, "list states: %v", err)
+		return nil, status.Errorf(codes.FailedPrecondition, "list commits: %v", err)
 	}
-	out := make([]*fvs2dpb.State, 0, len(states))
+	out := make([]*fvs2dpb.Commit, 0, len(states))
 	for _, st := range states {
-		out = append(out, &fvs2dpb.State{
-			StateId:   st.ID,
-			CreatedAt: timestamppb.New(st.CreatedAt),
-			Message:   st.Message,
+		out = append(out, &fvs2dpb.Commit{
+			RepositoryPath: req.GetRepositoryPath(),
+			StateId:        st.ID,
+			CreatedAt:      timestamppb.New(st.CreatedAt),
+			Message:        st.Message,
 		})
 	}
-	return &fvs2dpb.ListStatesResponse{States: out}, nil
+	return &fvs2dpb.ListCommitsResponse{Commits: out}, nil
 }
 
 func (s *fvs2dService) Restore(_ context.Context, req *fvs2dpb.RestoreRequest) (*fvs2dpb.RestoreResponse, error) {
@@ -368,6 +370,7 @@ func startManagerServer(addr string, svc *fvs2dService) (*grpc.Server, error) {
 	fvs2dpb.RegisterFvs2DServer(gs, svc)
 	hs := health.NewServer()
 	hs.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
+	hs.SetServingStatus("fvs2d.v1.Fvs2d", healthpb.HealthCheckResponse_SERVING)
 	healthpb.RegisterHealthServer(gs, hs)
 	go func() { _ = gs.Serve(lis) }()
 	return gs, nil
