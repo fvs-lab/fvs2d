@@ -64,8 +64,13 @@ func run() error {
 		fmt.Printf("fusermount_available=%v\n", fmount)
 		return nil
 	}
+	// Manager mode: with no initial mount, serve the Fvs2d mount-manager over
+	// gRPC so clients can create and unmount mounts at runtime.
 	if mountPoint == "" {
-		return fmt.Errorf("--mount is required")
+		if controlAddr == "" {
+			return fmt.Errorf("--mount is required (or --control to run as a mount manager)")
+		}
+		return runManager(controlAddr)
 	}
 	if !devFuse || !fmount {
 		return fmt.Errorf("cannot mount (dev_fuse_accessible=%v fusermount_available=%v)", devFuse, fmount)
@@ -178,6 +183,42 @@ func run() error {
 		}
 	}
 	return err
+}
+
+// runManager runs fvs2d as a persistent mount manager: it serves the Fvs2d
+// gRPC API and holds no mount of its own until a client creates one.
+func runManager(addr string) error {
+	mgr := newMountManager()
+	shutdownReq := make(chan bool, 1)
+	svc := &fvs2dService{
+		mgr: mgr,
+		shutdown: func(lazy bool) {
+			select {
+			case shutdownReq <- lazy:
+			default:
+			}
+		},
+	}
+
+	server, err := startManagerServer(addr, svc)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stderr, "manager: serving on %s\n", addr)
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(sigCh)
+
+	select {
+	case <-sigCh:
+		mgr.unmountAll(false)
+		server.Stop()
+	case lazy := <-shutdownReq:
+		mgr.unmountAll(lazy)
+		server.GracefulStop()
+	}
+	return nil
 }
 
 func main() {
