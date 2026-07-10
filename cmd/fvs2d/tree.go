@@ -21,7 +21,10 @@ type commitFile struct {
 	Mode   uint32         `json:"mode"`
 	Size   int64          `json:"size"`
 	Blocks []core.BlockID `json:"blocks"`
-	Link   string         `json:"link,omitempty"`
+	// BlockSizes holds per-block byte lengths (format >= 2, variable-size
+	// blocks). Absent in format-1 commits, which use the fixed block_size.
+	BlockSizes []int64 `json:"block_sizes,omitempty"`
+	Link       string  `json:"link,omitempty"`
 }
 
 type commitDoc struct {
@@ -44,13 +47,16 @@ type indexDoc struct {
 
 // fileNode is a single entry in the mounted tree, addressed by inode number.
 type fileNode struct {
-	ino        uint64
-	name       string
-	isDir      bool
-	link       string // symlink target, empty for non-symlinks
-	mode       uint32 // permission bits only
-	size       int64
-	blocks     []core.BlockID
+	ino    uint64
+	name   string
+	isDir  bool
+	link   string // symlink target, empty for non-symlinks
+	mode   uint32 // permission bits only
+	size   int64
+	blocks []core.BlockID
+	// offsets[i] is the byte offset where blocks[i] starts; nil for
+	// fixed-size (format 1) files.
+	offsets    []int64
 	children   map[string]uint64 // dir: name -> child ino
 	childOrder []uint64          // dir: child inos sorted by name (stable readdir)
 }
@@ -106,6 +112,9 @@ func (t *fsTree) readAt(n *fileNode, off int64, length int) ([]byte, error) {
 	if end > n.size {
 		end = n.size
 	}
+	if n.offsets != nil {
+		return t.readAtVariable(n, off, end)
+	}
 	bs := int64(t.blockSize)
 	if bs <= 0 {
 		bs = 4096
@@ -116,6 +125,39 @@ func (t *fsTree) readAt(n *fileNode, off int64, length int) ([]byte, error) {
 			break
 		}
 		blkStart := bi * bs
+		if blkStart >= end {
+			break
+		}
+		data, err := t.store.Get(n.blocks[bi])
+		if err != nil {
+			return nil, err
+		}
+		from := int64(0)
+		if off > blkStart {
+			from = off - blkStart
+		}
+		to := int64(len(data))
+		if blkStart+to > end {
+			to = end - blkStart
+		}
+		if from < 0 || to > int64(len(data)) || from > to {
+			return nil, fmt.Errorf("block %d out of range", bi)
+		}
+		out = append(out, data[from:to]...)
+	}
+	return out, nil
+}
+
+// readAtVariable serves [off, end) for a file with variable-size blocks,
+// locating the first overlapping block by binary search over the offsets.
+func (t *fsTree) readAtVariable(n *fileNode, off, end int64) ([]byte, error) {
+	bi := sort.Search(len(n.offsets), func(i int) bool { return n.offsets[i] > off }) - 1
+	if bi < 0 {
+		bi = 0
+	}
+	out := make([]byte, 0, end-off)
+	for ; bi < len(n.blocks); bi++ {
+		blkStart := n.offsets[bi]
 		if blkStart >= end {
 			break
 		}
@@ -172,6 +214,15 @@ func buildTree(store blockGetter, blockSize int, files []commitFile) *fsTree {
 		}
 		leaf := parts[len(parts)-1]
 		n := &fileNode{ino: next, name: leaf, mode: f.Mode, size: f.Size, blocks: f.Blocks, link: f.Link}
+		if len(f.BlockSizes) == len(f.Blocks) && len(f.Blocks) > 0 {
+			offsets := make([]int64, len(f.BlockSizes))
+			var pos int64
+			for i, s := range f.BlockSizes {
+				offsets[i] = pos
+				pos += s
+			}
+			n.offsets = offsets
+		}
 		if f.Link != "" {
 			n.size = int64(len(f.Link))
 		}
