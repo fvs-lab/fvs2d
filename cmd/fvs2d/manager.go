@@ -263,6 +263,43 @@ func (s *fvs2dService) Commit(_ context.Context, req *fvs2dpb.CommitRequest) (*f
 	}, nil
 }
 
+func (s *fvs2dService) ListStates(_ context.Context, req *fvs2dpb.ListStatesRequest) (*fvs2dpb.ListStatesResponse, error) {
+	if req.GetRepositoryPath() == "" {
+		return nil, status.Error(codes.InvalidArgument, "repository_path is required")
+	}
+	states, err := fvsrepo.States(req.GetRepositoryPath())
+	if err != nil {
+		return nil, status.Errorf(codes.FailedPrecondition, "list states: %v", err)
+	}
+	out := make([]*fvs2dpb.State, 0, len(states))
+	for _, st := range states {
+		out = append(out, &fvs2dpb.State{
+			StateId:   st.ID,
+			CreatedAt: timestamppb.New(st.CreatedAt),
+			Message:   st.Message,
+		})
+	}
+	return &fvs2dpb.ListStatesResponse{States: out}, nil
+}
+
+func (s *fvs2dService) Restore(_ context.Context, req *fvs2dpb.RestoreRequest) (*fvs2dpb.RestoreResponse, error) {
+	if req.GetRepositoryPath() == "" {
+		return nil, status.Error(codes.InvalidArgument, "repository_path is required")
+	}
+	if req.GetStateIdOrPrefix() == "" {
+		return nil, status.Error(codes.InvalidArgument, "state_id_or_prefix is required")
+	}
+	res, err := fvsrepo.Restore(req.GetRepositoryPath(), req.GetStateIdOrPrefix(), fvsrepo.RestoreOptions{
+		To:    req.GetDestinationPath(),
+		Clean: req.GetClean(),
+		Reset: req.GetReset_(),
+	})
+	if err != nil {
+		return nil, status.Errorf(codes.FailedPrecondition, "restore: %v", err)
+	}
+	return &fvs2dpb.RestoreResponse{StateId: res.StateID, DestinationPath: res.Dest}, nil
+}
+
 func (s *fvs2dService) CreateMount(_ context.Context, req *fvs2dpb.CreateMountRequest) (*fvs2dpb.Mount, error) {
 	if req.GetSpec() == nil {
 		return nil, status.Error(codes.InvalidArgument, "spec is required")

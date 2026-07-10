@@ -59,3 +59,54 @@ func TestRepositoryRPCs(t *testing.T) {
 		t.Fatalf("revision = %+v", revision)
 	}
 }
+
+func TestStatesAndRestoreRPCs(t *testing.T) {
+	root := t.TempDir()
+	service := &fvs2dService{mgr: newMountManager(), shutdown: func(bool) {}}
+	ctx := context.Background()
+
+	if _, err := service.InitRepository(ctx, &fvs2dpb.InitRepositoryRequest{RepositoryPath: root}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "file"), []byte("v1"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	first, err := service.Commit(ctx, &fvs2dpb.CommitRequest{RepositoryPath: root, Message: "first"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "file"), []byte("v2 changed"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Commit(ctx, &fvs2dpb.CommitRequest{RepositoryPath: root, Message: "second"}); err != nil {
+		t.Fatal(err)
+	}
+
+	states, err := service.ListStates(ctx, &fvs2dpb.ListStatesRequest{RepositoryPath: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(states.GetStates()) != 2 {
+		t.Fatalf("states = %d, want 2", len(states.GetStates()))
+	}
+
+	restored, err := service.Restore(ctx, &fvs2dpb.RestoreRequest{
+		RepositoryPath:  root,
+		StateIdOrPrefix: first.GetStateId(),
+		Clean:           true,
+		Reset_:          true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restored.GetStateId() != first.GetStateId() {
+		t.Fatalf("restored %s, want %s", restored.GetStateId(), first.GetStateId())
+	}
+	content, err := os.ReadFile(filepath.Join(root, "file"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != "v1" {
+		t.Fatalf("file = %q after rollback, want %q", content, "v1")
+	}
+}
