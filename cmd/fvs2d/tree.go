@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	fvsrepo "fvs2/repo"
 	"os"
 	"path"
 	"path/filepath"
@@ -455,6 +456,20 @@ func loadCommitDoc(repo, id string) (commitDoc, error) {
 	var c commitDoc
 	if err := json.Unmarshal(b, &c); err != nil {
 		return commitDoc{}, err
+	}
+	if len(c.Files) == 0 {
+		// Format 3 keeps the file list in tree objects; the repo library
+		// flattens them regardless of format.
+		entries, err := fvsrepo.StateFiles(repo, id)
+		if err != nil {
+			return commitDoc{}, err
+		}
+		for _, e := range entries {
+			c.Files = append(c.Files, commitFile{
+				Path: e.Path, Mode: e.Mode, Size: e.Size,
+				Blocks: e.Blocks, BlockSizes: e.BlockSizes, Link: e.Link,
+			})
+		}
 	}
 	return c, nil
 }
