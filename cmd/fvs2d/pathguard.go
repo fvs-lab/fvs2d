@@ -79,7 +79,12 @@ func (g *pathGuard) check(p string) (string, error) {
 		return canon, nil
 	}
 	if canon != g.root && !strings.HasPrefix(canon, g.root+string(os.PathSeparator)) {
-		return "", fmt.Errorf("%s: %w (allowed root: %s)", p, errPathEscape, g.root)
+		// Deliberately do not include p or g.root in the error: this error
+		// text reaches the client verbatim (via mapError ->
+		// codes.PermissionDenied), and echoing either would leak the
+		// daemon's filesystem layout to any client probing the sandbox
+		// boundary.
+		return "", errPathEscape
 	}
 	return canon, nil
 }
