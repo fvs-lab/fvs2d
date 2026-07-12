@@ -1,8 +1,12 @@
 syntax = "proto3";
 
+// v1 compatibility policy: fields and messages are additive within v1;
+// existing field numbers/names are never reused. A field or message that is
+// renamed or removed must have its old number/name added to a `reserved`
+// declaration in the same change.
 package fvs2d.v1;
 
-option go_package = "fvs2d/internal/fvs2dpb;fvs2dpb";
+option go_package = "fvs2d/fvs2dpb;fvs2dpb";
 
 import "google/protobuf/empty.proto";
 import "google/protobuf/timestamp.proto";
@@ -11,8 +15,14 @@ service Fvs2d {
     rpc Probe(google.protobuf.Empty) returns (ProbeResponse);
     rpc InitRepository(InitRepositoryRequest) returns (Repository);
     rpc Commit(CommitRequest) returns (.fvs2d.v1.Commit);
+    rpc CommitStream(CommitRequest) returns (stream Progress);
     rpc ListCommits(ListCommitsRequest) returns (ListCommitsResponse);
+    rpc GetCommit(GetCommitRequest) returns (.fvs2d.v1.Commit);
     rpc Restore(RestoreRequest) returns (RestoreResponse);
+    rpc RestoreStream(RestoreRequest) returns (stream Progress);
+    rpc ListFiles(ListFilesRequest) returns (ListFilesResponse);
+    rpc GetFile(GetFileRequest) returns (stream GetFileChunk);
+    rpc Diff(DiffRequest) returns (DiffResponse);
     rpc CreateMount(CreateMountRequest) returns (Mount);
     rpc GetMount(GetMountRequest) returns (Mount);
     rpc ListMounts(google.protobuf.Empty) returns (ListMountsResponse);
@@ -22,10 +32,26 @@ service Fvs2d {
 
 message ListCommitsRequest {
     string repository_path = 1;
+    // page_size caps the number of summaries returned (default: all).
+    int32 page_size = 2;
+    // page_token resumes a previous listing, opaque, echoed from
+    // next_page_token.
+    string page_token = 3;
 }
 
 message ListCommitsResponse {
-    repeated Commit commits = 1;
+    repeated CommitSummary commits = 2;
+    // next_page_token is set when more results follow; pass it back as
+    // page_token to continue.
+    string next_page_token = 3;
+    // field 1 used to be `repeated Commit commits`; the response now returns
+    // the cheaper CommitSummary (see GetCommit for full detail).
+    reserved 1;
+}
+
+message GetCommitRequest {
+    string repository_path = 1;
+    string state_id_or_prefix = 2;
 }
 
 message RestoreRequest {
@@ -66,6 +92,33 @@ message Commit {
     google.protobuf.Timestamp created_at = 3;
     uint64 file_count = 4;
     string message = 5;
+    // created is false when the commit was a no-op (state_id/message/
+    // created_at describe the pre-existing HEAD state, not a new one).
+    bool created = 6;
+}
+
+// CommitSummary is the cheap, list-friendly projection of a Commit: no
+// nested data, safe to fetch in bulk. Fetch full detail with GetCommit.
+message CommitSummary {
+    string repository_path = 1;
+    string state_id = 2;
+    google.protobuf.Timestamp created_at = 3;
+    string message = 4;
+    uint64 file_count = 5;
+}
+
+// Progress reports incremental status for a streaming Commit/Restore. Phase
+// is a short machine-friendly tag ("hashing", "restoring", "done"); message
+// carries the current file path when known. done=true marks the final
+// message on the stream, together with whichever result field applies.
+message Progress {
+    string phase = 1;
+    int64 current = 2;
+    int64 total = 3;
+    string message = 4;
+    bool done = 5;
+    Commit result_commit = 6;
+    RestoreResponse result_restore = 7;
 }
 
 message ProbeResponse {
@@ -77,6 +130,20 @@ message ProbeResponse {
     bool dev_fuse_accessible = 5;
     bool fusermount_available = 6;
     bool running_in_flatpak = 7;
+
+    // api_version identifies this proto's wire contract (independent of
+    // daemon_version, which is the build's own version string).
+    string api_version = 8;
+    // min_repo_format / max_repo_format bound the on-disk fvs2 repo formats
+    // this daemon build can read/write.
+    uint32 min_repo_format = 9;
+    uint32 max_repo_format = 10;
+    // supported_operations lists the Fvs2d RPC method names this build
+    // implements, for simple client-side capability checks.
+    repeated string supported_operations = 11;
+    // work_dir is the configured allowed-root (--root), empty when the
+    // daemon has no sandbox configured and serves arbitrary paths.
+    optional string work_dir = 12;
 }
 
 message CommitSelector {
@@ -137,4 +204,65 @@ message UnmountRequest {
 
 message ShutdownRequest {
     UnmountMode mode = 1;
+}
+
+// ListFiles / GetFile / Diff are read-only file inspection endpoints over a
+// single committed state; no line-level diff, just presence/size/change
+// kind, so they work equally well on binary and text files.
+
+message ListFilesRequest {
+    string repository_path = 1;
+    CommitSelector revision = 2;
+}
+
+message FileInfo {
+    string path = 1;
+    uint32 mode = 2;
+    int64 size = 3;
+    // link is the symlink target, empty for regular files.
+    string link = 4;
+}
+
+message ListFilesResponse {
+    repeated FileInfo files = 1;
+}
+
+message GetFileRequest {
+    string repository_path = 1;
+    CommitSelector revision = 2;
+    string path = 3;
+    // chunk_size caps each streamed chunk's byte length (default chosen by
+    // the server when unset or <= 0).
+    int32 chunk_size = 4;
+}
+
+message GetFileChunk {
+    bytes data = 1;
+    // offset is the byte offset of data[0] within the file.
+    int64 offset = 2;
+}
+
+message DiffRequest {
+    string repository_path = 1;
+    string from_state = 2;
+    string to_state = 3;
+}
+
+enum ChangeKind {
+    CHANGE_KIND_UNSPECIFIED = 0;
+    CHANGE_KIND_ADDED = 1;
+    CHANGE_KIND_MODIFIED = 2;
+    CHANGE_KIND_REMOVED = 3;
+}
+
+message FileChange {
+    string path = 1;
+    ChangeKind kind = 2;
+    // size_delta is to_size - from_size (0 for pure metadata/mode changes,
+    // from_size for a removal, to_size for an addition).
+    int64 size_delta = 3;
+}
+
+message DiffResponse {
+    repeated FileChange changes = 1;
 }

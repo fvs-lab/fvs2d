@@ -4,6 +4,11 @@
 // - protoc             v3.21.12
 // source: fvs2d.proto
 
+// v1 compatibility policy: fields and messages are additive within v1;
+// existing field numbers/names are never reused. A field or message that is
+// renamed or removed must have its old number/name added to a `reserved`
+// declaration in the same change.
+
 package fvs2dpb
 
 import (
@@ -23,8 +28,14 @@ const (
 	Fvs2D_Probe_FullMethodName          = "/fvs2d.v1.Fvs2d/Probe"
 	Fvs2D_InitRepository_FullMethodName = "/fvs2d.v1.Fvs2d/InitRepository"
 	Fvs2D_Commit_FullMethodName         = "/fvs2d.v1.Fvs2d/Commit"
+	Fvs2D_CommitStream_FullMethodName   = "/fvs2d.v1.Fvs2d/CommitStream"
 	Fvs2D_ListCommits_FullMethodName    = "/fvs2d.v1.Fvs2d/ListCommits"
+	Fvs2D_GetCommit_FullMethodName      = "/fvs2d.v1.Fvs2d/GetCommit"
 	Fvs2D_Restore_FullMethodName        = "/fvs2d.v1.Fvs2d/Restore"
+	Fvs2D_RestoreStream_FullMethodName  = "/fvs2d.v1.Fvs2d/RestoreStream"
+	Fvs2D_ListFiles_FullMethodName      = "/fvs2d.v1.Fvs2d/ListFiles"
+	Fvs2D_GetFile_FullMethodName        = "/fvs2d.v1.Fvs2d/GetFile"
+	Fvs2D_Diff_FullMethodName           = "/fvs2d.v1.Fvs2d/Diff"
 	Fvs2D_CreateMount_FullMethodName    = "/fvs2d.v1.Fvs2d/CreateMount"
 	Fvs2D_GetMount_FullMethodName       = "/fvs2d.v1.Fvs2d/GetMount"
 	Fvs2D_ListMounts_FullMethodName     = "/fvs2d.v1.Fvs2d/ListMounts"
@@ -39,8 +50,14 @@ type Fvs2DClient interface {
 	Probe(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ProbeResponse, error)
 	InitRepository(ctx context.Context, in *InitRepositoryRequest, opts ...grpc.CallOption) (*Repository, error)
 	Commit(ctx context.Context, in *CommitRequest, opts ...grpc.CallOption) (*Commit, error)
+	CommitStream(ctx context.Context, in *CommitRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Progress], error)
 	ListCommits(ctx context.Context, in *ListCommitsRequest, opts ...grpc.CallOption) (*ListCommitsResponse, error)
+	GetCommit(ctx context.Context, in *GetCommitRequest, opts ...grpc.CallOption) (*Commit, error)
 	Restore(ctx context.Context, in *RestoreRequest, opts ...grpc.CallOption) (*RestoreResponse, error)
+	RestoreStream(ctx context.Context, in *RestoreRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Progress], error)
+	ListFiles(ctx context.Context, in *ListFilesRequest, opts ...grpc.CallOption) (*ListFilesResponse, error)
+	GetFile(ctx context.Context, in *GetFileRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[GetFileChunk], error)
+	Diff(ctx context.Context, in *DiffRequest, opts ...grpc.CallOption) (*DiffResponse, error)
 	CreateMount(ctx context.Context, in *CreateMountRequest, opts ...grpc.CallOption) (*Mount, error)
 	GetMount(ctx context.Context, in *GetMountRequest, opts ...grpc.CallOption) (*Mount, error)
 	ListMounts(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListMountsResponse, error)
@@ -86,6 +103,25 @@ func (c *fvs2DClient) Commit(ctx context.Context, in *CommitRequest, opts ...grp
 	return out, nil
 }
 
+func (c *fvs2DClient) CommitStream(ctx context.Context, in *CommitRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Progress], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &Fvs2D_ServiceDesc.Streams[0], Fvs2D_CommitStream_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[CommitRequest, Progress]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Fvs2D_CommitStreamClient = grpc.ServerStreamingClient[Progress]
+
 func (c *fvs2DClient) ListCommits(ctx context.Context, in *ListCommitsRequest, opts ...grpc.CallOption) (*ListCommitsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListCommitsResponse)
@@ -96,10 +132,78 @@ func (c *fvs2DClient) ListCommits(ctx context.Context, in *ListCommitsRequest, o
 	return out, nil
 }
 
+func (c *fvs2DClient) GetCommit(ctx context.Context, in *GetCommitRequest, opts ...grpc.CallOption) (*Commit, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Commit)
+	err := c.cc.Invoke(ctx, Fvs2D_GetCommit_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *fvs2DClient) Restore(ctx context.Context, in *RestoreRequest, opts ...grpc.CallOption) (*RestoreResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(RestoreResponse)
 	err := c.cc.Invoke(ctx, Fvs2D_Restore_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *fvs2DClient) RestoreStream(ctx context.Context, in *RestoreRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Progress], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &Fvs2D_ServiceDesc.Streams[1], Fvs2D_RestoreStream_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[RestoreRequest, Progress]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Fvs2D_RestoreStreamClient = grpc.ServerStreamingClient[Progress]
+
+func (c *fvs2DClient) ListFiles(ctx context.Context, in *ListFilesRequest, opts ...grpc.CallOption) (*ListFilesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListFilesResponse)
+	err := c.cc.Invoke(ctx, Fvs2D_ListFiles_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *fvs2DClient) GetFile(ctx context.Context, in *GetFileRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[GetFileChunk], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &Fvs2D_ServiceDesc.Streams[2], Fvs2D_GetFile_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[GetFileRequest, GetFileChunk]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Fvs2D_GetFileClient = grpc.ServerStreamingClient[GetFileChunk]
+
+func (c *fvs2DClient) Diff(ctx context.Context, in *DiffRequest, opts ...grpc.CallOption) (*DiffResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DiffResponse)
+	err := c.cc.Invoke(ctx, Fvs2D_Diff_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -163,8 +267,14 @@ type Fvs2DServer interface {
 	Probe(context.Context, *emptypb.Empty) (*ProbeResponse, error)
 	InitRepository(context.Context, *InitRepositoryRequest) (*Repository, error)
 	Commit(context.Context, *CommitRequest) (*Commit, error)
+	CommitStream(*CommitRequest, grpc.ServerStreamingServer[Progress]) error
 	ListCommits(context.Context, *ListCommitsRequest) (*ListCommitsResponse, error)
+	GetCommit(context.Context, *GetCommitRequest) (*Commit, error)
 	Restore(context.Context, *RestoreRequest) (*RestoreResponse, error)
+	RestoreStream(*RestoreRequest, grpc.ServerStreamingServer[Progress]) error
+	ListFiles(context.Context, *ListFilesRequest) (*ListFilesResponse, error)
+	GetFile(*GetFileRequest, grpc.ServerStreamingServer[GetFileChunk]) error
+	Diff(context.Context, *DiffRequest) (*DiffResponse, error)
 	CreateMount(context.Context, *CreateMountRequest) (*Mount, error)
 	GetMount(context.Context, *GetMountRequest) (*Mount, error)
 	ListMounts(context.Context, *emptypb.Empty) (*ListMountsResponse, error)
@@ -189,11 +299,29 @@ func (UnimplementedFvs2DServer) InitRepository(context.Context, *InitRepositoryR
 func (UnimplementedFvs2DServer) Commit(context.Context, *CommitRequest) (*Commit, error) {
 	return nil, status.Error(codes.Unimplemented, "method Commit not implemented")
 }
+func (UnimplementedFvs2DServer) CommitStream(*CommitRequest, grpc.ServerStreamingServer[Progress]) error {
+	return status.Error(codes.Unimplemented, "method CommitStream not implemented")
+}
 func (UnimplementedFvs2DServer) ListCommits(context.Context, *ListCommitsRequest) (*ListCommitsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListCommits not implemented")
 }
+func (UnimplementedFvs2DServer) GetCommit(context.Context, *GetCommitRequest) (*Commit, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetCommit not implemented")
+}
 func (UnimplementedFvs2DServer) Restore(context.Context, *RestoreRequest) (*RestoreResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Restore not implemented")
+}
+func (UnimplementedFvs2DServer) RestoreStream(*RestoreRequest, grpc.ServerStreamingServer[Progress]) error {
+	return status.Error(codes.Unimplemented, "method RestoreStream not implemented")
+}
+func (UnimplementedFvs2DServer) ListFiles(context.Context, *ListFilesRequest) (*ListFilesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListFiles not implemented")
+}
+func (UnimplementedFvs2DServer) GetFile(*GetFileRequest, grpc.ServerStreamingServer[GetFileChunk]) error {
+	return status.Error(codes.Unimplemented, "method GetFile not implemented")
+}
+func (UnimplementedFvs2DServer) Diff(context.Context, *DiffRequest) (*DiffResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Diff not implemented")
 }
 func (UnimplementedFvs2DServer) CreateMount(context.Context, *CreateMountRequest) (*Mount, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateMount not implemented")
@@ -285,6 +413,17 @@ func _Fvs2D_Commit_Handler(srv interface{}, ctx context.Context, dec func(interf
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Fvs2D_CommitStream_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(CommitRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(Fvs2DServer).CommitStream(m, &grpc.GenericServerStream[CommitRequest, Progress]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Fvs2D_CommitStreamServer = grpc.ServerStreamingServer[Progress]
+
 func _Fvs2D_ListCommits_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ListCommitsRequest)
 	if err := dec(in); err != nil {
@@ -303,6 +442,24 @@ func _Fvs2D_ListCommits_Handler(srv interface{}, ctx context.Context, dec func(i
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Fvs2D_GetCommit_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetCommitRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(Fvs2DServer).GetCommit(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Fvs2D_GetCommit_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(Fvs2DServer).GetCommit(ctx, req.(*GetCommitRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _Fvs2D_Restore_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(RestoreRequest)
 	if err := dec(in); err != nil {
@@ -317,6 +474,64 @@ func _Fvs2D_Restore_Handler(srv interface{}, ctx context.Context, dec func(inter
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(Fvs2DServer).Restore(ctx, req.(*RestoreRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Fvs2D_RestoreStream_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(RestoreRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(Fvs2DServer).RestoreStream(m, &grpc.GenericServerStream[RestoreRequest, Progress]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Fvs2D_RestoreStreamServer = grpc.ServerStreamingServer[Progress]
+
+func _Fvs2D_ListFiles_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListFilesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(Fvs2DServer).ListFiles(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Fvs2D_ListFiles_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(Fvs2DServer).ListFiles(ctx, req.(*ListFilesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Fvs2D_GetFile_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(GetFileRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(Fvs2DServer).GetFile(m, &grpc.GenericServerStream[GetFileRequest, GetFileChunk]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Fvs2D_GetFileServer = grpc.ServerStreamingServer[GetFileChunk]
+
+func _Fvs2D_Diff_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DiffRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(Fvs2DServer).Diff(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Fvs2D_Diff_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(Fvs2DServer).Diff(ctx, req.(*DiffRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -435,8 +650,20 @@ var Fvs2D_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _Fvs2D_ListCommits_Handler,
 		},
 		{
+			MethodName: "GetCommit",
+			Handler:    _Fvs2D_GetCommit_Handler,
+		},
+		{
 			MethodName: "Restore",
 			Handler:    _Fvs2D_Restore_Handler,
+		},
+		{
+			MethodName: "ListFiles",
+			Handler:    _Fvs2D_ListFiles_Handler,
+		},
+		{
+			MethodName: "Diff",
+			Handler:    _Fvs2D_Diff_Handler,
 		},
 		{
 			MethodName: "CreateMount",
@@ -459,6 +686,22 @@ var Fvs2D_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _Fvs2D_Shutdown_Handler,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "CommitStream",
+			Handler:       _Fvs2D_CommitStream_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "RestoreStream",
+			Handler:       _Fvs2D_RestoreStream_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "GetFile",
+			Handler:       _Fvs2D_GetFile_Handler,
+			ServerStreams: true,
+		},
+	},
 	Metadata: "fvs2d.proto",
 }
