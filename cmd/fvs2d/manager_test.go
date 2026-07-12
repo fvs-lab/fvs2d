@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"fvs2d/internal/fvs2dpb"
+	"fvs2d/fvs2dpb"
 )
 
 func TestParseControlAddr(t *testing.T) {
@@ -36,7 +36,7 @@ func TestParseControlAddr(t *testing.T) {
 
 func TestRepositoryRPCs(t *testing.T) {
 	root := t.TempDir()
-	service := &fvs2dService{mgr: newMountManager(), shutdown: func(bool) {}}
+	service := &fvs2dService{mgr: newMountManager(nil, nil), guard: &pathGuard{}, shutdown: func(bool) {}}
 
 	repository, err := service.InitRepository(context.Background(), &fvs2dpb.InitRepositoryRequest{
 		RepositoryPath: root,
@@ -62,7 +62,7 @@ func TestRepositoryRPCs(t *testing.T) {
 
 func TestStatesAndRestoreRPCs(t *testing.T) {
 	root := t.TempDir()
-	service := &fvs2dService{mgr: newMountManager(), shutdown: func(bool) {}}
+	service := &fvs2dService{mgr: newMountManager(nil, nil), guard: &pathGuard{}, shutdown: func(bool) {}}
 	ctx := context.Background()
 
 	if _, err := service.InitRepository(ctx, &fvs2dpb.InitRepositoryRequest{RepositoryPath: root}); err != nil {
@@ -88,6 +88,19 @@ func TestStatesAndRestoreRPCs(t *testing.T) {
 	}
 	if len(states.GetCommits()) != 2 {
 		t.Fatalf("states = %d, want 2", len(states.GetCommits()))
+	}
+	for _, c := range states.GetCommits() {
+		if c.GetFileCount() != 1 {
+			t.Errorf("summary %s file_count = %d, want 1", c.GetStateId(), c.GetFileCount())
+		}
+	}
+
+	detail, err := service.GetCommit(ctx, &fvs2dpb.GetCommitRequest{RepositoryPath: root, StateIdOrPrefix: first.GetStateId()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if detail.GetMessage() != "first" || detail.GetFileCount() != 1 {
+		t.Fatalf("GetCommit = %+v", detail)
 	}
 
 	restored, err := service.Restore(ctx, &fvs2dpb.RestoreRequest{

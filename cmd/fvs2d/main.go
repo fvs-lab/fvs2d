@@ -34,8 +34,9 @@ func lazyUnmount(mountPoint string) error {
 
 func run() error {
 	var mountPoint, blocksDir, repoDir, stateSel, branchSel, upperDir, controlAddr string
+	var rootDir, token string
 	var lowers stringList
-	var debug, probe bool
+	var debug, probe, insecureTCP bool
 	var blockSize int
 
 	flag.StringVar(&mountPoint, "mount", "", "mountpoint")
@@ -49,6 +50,9 @@ func run() error {
 	flag.IntVar(&blockSize, "block-size", 4096, "fallback block size (overridden by the commit)")
 	flag.BoolVar(&probe, "probe", false, "print capability report and exit")
 	flag.StringVar(&controlAddr, "control", "", "enable gRPC control server: unix:/path.sock or tcp:host:port (empty = disabled)")
+	flag.StringVar(&rootDir, "root", "", "allowed-root sandbox: reject any client-supplied path outside this directory (empty = arbitrary paths, current behavior)")
+	flag.BoolVar(&insecureTCP, "insecure-tcp", false, "allow the control server to bind a non-loopback TCP address (requires --token)")
+	flag.StringVar(&token, "token", os.Getenv("FVS2D_TOKEN"), "shared control-API token for TCP (default: $FVS2D_TOKEN); unix sockets never require it")
 	flag.Parse()
 	_ = blockSize
 
@@ -67,7 +71,7 @@ func run() error {
 		if controlAddr == "" {
 			return fmt.Errorf("--mount is required (or --control to run as a mount manager)")
 		}
-		return runManager(controlAddr)
+		return runManager(controlAddr, rootDir, serverConfig{insecureTCP: insecureTCP, token: token})
 	}
 	if controlAddr != "" {
 		return fmt.Errorf("--control cannot be combined with --mount; run the manager without --mount")
@@ -83,7 +87,15 @@ func run() error {
 		for _, layer := range lowers {
 			sels = append(sels, parseLayerSel(layer))
 		}
-		tree, err = buildMergedTreeFromRepos(sels, blocksDir)
+		resolved := make([]resolvedCommit, 0, len(sels))
+		for _, sel := range sels {
+			rc, rerr := resolveLayer(sel)
+			if rerr != nil {
+				return fmt.Errorf("layer %s: %w", sel.repo, rerr)
+			}
+			resolved = append(resolved, rc)
+		}
+		tree, err = buildMergedTreeFromRepos(resolved, blocksDir)
 	} else {
 		tree, err = buildTreeFromRepo(repoDir, stateSel, branchSel, blocksDir)
 	}
@@ -124,11 +136,22 @@ func run() error {
 
 // runManager runs fvs2d as a persistent mount manager: it serves the Fvs2d
 // gRPC API and holds no mount of its own until a client creates one.
-func runManager(addr string) error {
-	mgr := newMountManager()
+func runManager(addr, rootDir string, cfg serverConfig) error {
+	logf := func(format string, args ...any) { fmt.Fprintf(os.Stderr, format, args...) }
+
+	guard, err := newPathGuard(rootDir)
+	if err != nil {
+		return fmt.Errorf("root: %w", err)
+	}
+	if guard.root == "" {
+		fmt.Fprintln(os.Stderr, "WARNING: no --root configured; the daemon will operate on arbitrary filesystem paths supplied by any client")
+	}
+
+	mgr := newMountManager(guard, logf)
 	shutdownReq := make(chan bool, 1)
 	svc := &fvs2dService{
-		mgr: mgr,
+		mgr:   mgr,
+		guard: guard,
 		shutdown: func(lazy bool) {
 			select {
 			case shutdownReq <- lazy:
@@ -137,7 +160,7 @@ func runManager(addr string) error {
 		},
 	}
 
-	server, err := startManagerServer(addr, svc)
+	server, err := startManagerServer(addr, svc, cfg, logf)
 	if err != nil {
 		return err
 	}
