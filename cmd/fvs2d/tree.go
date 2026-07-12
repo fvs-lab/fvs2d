@@ -1,11 +1,9 @@
 package main
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	fvsrepo "fvs2/repo"
-	"os"
 	"path"
 	"path/filepath"
 	"sort"
@@ -13,38 +11,6 @@ import (
 
 	core "fvs-v2-core"
 )
-
-// On-disk schema (subset). fvs2d cannot import fvs2/internal/meta (internal,
-// different module), so it parses the JSON it needs directly.
-
-type commitFile struct {
-	Path   string         `json:"path"`
-	Mode   uint32         `json:"mode"`
-	Size   int64          `json:"size"`
-	Blocks []core.BlockID `json:"blocks"`
-	// BlockSizes holds per-block byte lengths (format >= 2, variable-size
-	// blocks). Absent in format-1 commits, which use the fixed block_size.
-	BlockSizes []int64 `json:"block_sizes,omitempty"`
-	Link       string  `json:"link,omitempty"`
-}
-
-type commitDoc struct {
-	ID        string       `json:"id"`
-	BlockSize int          `json:"block_size"`
-	Files     []commitFile `json:"files"`
-}
-
-type headDoc struct {
-	Type string `json:"type"`
-	Name string `json:"name"`
-	ID   string `json:"id"`
-}
-
-type indexDoc struct {
-	Commits []struct {
-		ID string `json:"id"`
-	} `json:"commits"`
-}
 
 // fileNode is a single entry in the mounted tree, addressed by inode number.
 type fileNode struct {
@@ -183,7 +149,7 @@ func (t *fsTree) readAtVariable(n *fileNode, off, end int64) ([]byte, error) {
 }
 
 // buildTree turns a commit's flat file list into an inode tree rooted at ino 1.
-func buildTree(store blockGetter, blockSize int, files []commitFile) *fsTree {
+func buildTree(store blockGetter, blockSize int, files []fvsrepo.FileEntry) *fsTree {
 	t := &fsTree{nodes: map[uint64]*fileNode{}, blockSize: blockSize, store: store}
 	root := &fileNode{ino: 1, isDir: true, mode: 0o755, children: map[string]uint64{}}
 	t.nodes[1] = root
@@ -250,39 +216,6 @@ func buildTree(store blockGetter, blockSize int, files []commitFile) *fsTree {
 	return t
 }
 
-// buildTreeFromRepo resolves a commit (by prefix, branch, or HEAD) inside a repo
-// and builds the mountable tree backed by that repo's block store.
-func buildTreeFromRepo(repo, statePrefix, branch, blocksOverride string) (*fsTree, error) {
-	metaDir := filepath.Join(repo, ".fvs2")
-	if fi, err := os.Stat(metaDir); err != nil || !fi.IsDir() {
-		return nil, fmt.Errorf("not an fvs2 repo: %s", repo)
-	}
-	id, err := resolveCommit(repo, statePrefix, branch)
-	if err != nil {
-		return nil, err
-	}
-	if id == "" {
-		return nil, errors.New("no commit to mount (empty branch or no states)")
-	}
-	doc, err := loadCommitDoc(repo, id)
-	if err != nil {
-		return nil, err
-	}
-	blocks := blocksOverride
-	if blocks == "" {
-		blocks = filepath.Join(metaDir, "blocks")
-	}
-	store, err := core.NewDiskBlockStore(blocks)
-	if err != nil {
-		return nil, err
-	}
-	bs := doc.BlockSize
-	if bs <= 0 {
-		bs = 4096
-	}
-	return buildTree(store, bs, doc.Files), nil
-}
-
 type layerSel struct {
 	repo   string
 	state  string
@@ -301,17 +234,76 @@ func parseLayerSel(s string) layerSel {
 
 const whiteoutPrefix = ".wh."
 
-func buildMergedTreeFromRepos(layers []layerSel, blocksOverride string) (*fsTree, error) {
+// resolvedCommit is a layer's commit already resolved and loaded through the
+// fvs2 repo package: the mount daemon no longer parses .fvs2 metadata files
+// itself (see fvsrepo.ResolveCommit / fvsrepo.DescribeState / fvsrepo.StateFiles).
+type resolvedCommit struct {
+	repo      string
+	stateID   string
+	blockSize int
+	files     []fvsrepo.FileEntry
+}
+
+// resolveLayer resolves and loads one layer's commit through the fvs2 repo
+// package, so callers that need the same layer for both a manifest response
+// and tree construction can resolve it exactly once (see mountManager.create).
+func resolveLayer(sel layerSel) (resolvedCommit, error) {
+	id, err := fvsrepo.ResolveCommit(sel.repo, sel.state, sel.branch)
+	if err != nil {
+		return resolvedCommit{}, err
+	}
+	if id == "" {
+		return resolvedCommit{}, errors.New("no commit to mount (empty branch or no states)")
+	}
+	detail, err := fvsrepo.DescribeState(sel.repo, id)
+	if err != nil {
+		return resolvedCommit{}, err
+	}
+	files, err := fvsrepo.StateFiles(sel.repo, id)
+	if err != nil {
+		return resolvedCommit{}, err
+	}
+	return resolvedCommit{repo: sel.repo, stateID: id, blockSize: detail.BlockSize, files: files}, nil
+}
+
+// buildTreeFromRepo resolves a commit (by prefix, branch, or HEAD) inside a repo
+// and builds the mountable tree backed by that repo's block store.
+func buildTreeFromRepo(repo, statePrefix, branch, blocksOverride string) (*fsTree, error) {
+	rc, err := resolveLayer(layerSel{repo: repo, state: statePrefix, branch: branch})
+	if err != nil {
+		return nil, err
+	}
+	blocks := blocksOverride
+	if blocks == "" {
+		blocks = filepath.Join(repo, ".fvs2", "blocks")
+	}
+	store, err := core.NewDiskBlockStore(blocks)
+	if err != nil {
+		return nil, err
+	}
+	bs := rc.blockSize
+	if bs <= 0 {
+		bs = 4096
+	}
+	return buildTree(store, bs, rc.files), nil
+}
+
+// buildMergedTreeFromRepos builds a stacked read-only tree from already
+// resolved layers (lowest to highest), applying whiteouts. Callers that also
+// need each layer's resolved commit id/block size for a response (e.g.
+// mountManager.create) should resolve layers once with resolveLayer and pass
+// the results here instead of letting this function re-resolve them.
+func buildMergedTreeFromRepos(layers []resolvedCommit, blocksOverride string) (*fsTree, error) {
 	if len(layers) == 0 {
 		return nil, errors.New("no layers to mount")
 	}
 
 	order := make([]string, 0)
-	files := make(map[string]commitFile)
+	files := make(map[string]fvsrepo.FileEntry)
 	var stores []blockGetter
 	blockSize := 0
 
-	add := func(p string, f commitFile) {
+	add := func(p string, f fvsrepo.FileEntry) {
 		if _, ok := files[p]; !ok {
 			order = append(order, p)
 		}
@@ -330,17 +322,13 @@ func buildMergedTreeFromRepos(layers []layerSel, blocksOverride string) (*fsTree
 		}
 	}
 
-	for _, l := range layers {
-		doc, err := loadResolvedCommit(l)
-		if err != nil {
-			return nil, fmt.Errorf("layer %s: %w", l.repo, err)
-		}
-		if doc.BlockSize > 0 {
-			blockSize = doc.BlockSize
+	for _, rc := range layers {
+		if rc.blockSize > 0 {
+			blockSize = rc.blockSize
 		}
 		blocks := blocksOverride
 		if blocks == "" {
-			blocks = filepath.Join(l.repo, ".fvs2", "blocks")
+			blocks = filepath.Join(rc.repo, ".fvs2", "blocks")
 		}
 		store, err := core.NewDiskBlockStore(blocks)
 		if err != nil {
@@ -348,7 +336,7 @@ func buildMergedTreeFromRepos(layers []layerSel, blocksOverride string) (*fsTree
 		}
 		stores = append(stores, store)
 
-		for _, f := range doc.Files {
+		for _, f := range rc.files {
 			clean := strings.Trim(filepath.ToSlash(f.Path), "/")
 			if clean == "" {
 				continue
@@ -365,111 +353,9 @@ func buildMergedTreeFromRepos(layers []layerSel, blocksOverride string) (*fsTree
 	if blockSize <= 0 {
 		blockSize = 4096
 	}
-	out := make([]commitFile, 0, len(order))
+	out := make([]fvsrepo.FileEntry, 0, len(order))
 	for _, p := range order {
 		out = append(out, files[p])
 	}
 	return buildTree(multiStore{stores: stores}, blockSize, out), nil
-}
-
-func loadResolvedCommit(l layerSel) (commitDoc, error) {
-	id, err := resolveCommit(l.repo, l.state, l.branch)
-	if err != nil {
-		return commitDoc{}, err
-	}
-	if id == "" {
-		return commitDoc{}, errors.New("no commit to mount (empty branch or no states)")
-	}
-	return loadCommitDoc(l.repo, id)
-}
-
-func resolveCommit(repo, statePrefix, branch string) (string, error) {
-	metaDir := filepath.Join(repo, ".fvs2")
-	if statePrefix != "" {
-		b, err := os.ReadFile(filepath.Join(metaDir, "index.json"))
-		if err != nil {
-			return "", err
-		}
-		var idx indexDoc
-		if err := json.Unmarshal(b, &idx); err != nil {
-			return "", err
-		}
-		var hits []string
-		for _, c := range idx.Commits {
-			if strings.HasPrefix(c.ID, statePrefix) {
-				hits = append(hits, c.ID)
-			}
-		}
-		switch len(hits) {
-		case 0:
-			return "", fmt.Errorf("state not found: %s", statePrefix)
-		case 1:
-			return hits[0], nil
-		default:
-			return "", fmt.Errorf("ambiguous state prefix: %s", statePrefix)
-		}
-	}
-	if branch != "" {
-		return readBranchRef(metaDir, branch)
-	}
-	// Fall back to HEAD.
-	b, err := os.ReadFile(filepath.Join(metaDir, "HEAD.json"))
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return readBranchRef(metaDir, "main")
-		}
-		return "", err
-	}
-	var h headDoc
-	if err := json.Unmarshal(b, &h); err != nil {
-		return "", err
-	}
-	if h.Type == "commit" {
-		return strings.TrimSpace(h.ID), nil
-	}
-	name := h.Name
-	if name == "" {
-		name = "main"
-	}
-	return readBranchRef(metaDir, name)
-}
-
-func readBranchRef(metaDir, name string) (string, error) {
-	if strings.ContainsAny(name, "/\\") || strings.Contains(name, "..") {
-		return "", fmt.Errorf("invalid branch name: %s", name)
-	}
-	b, err := os.ReadFile(filepath.Join(metaDir, "refs", "heads", name))
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return "", fmt.Errorf("branch not found: %s", name)
-		}
-		return "", err
-	}
-	return strings.TrimSpace(string(b)), nil
-}
-
-func loadCommitDoc(repo, id string) (commitDoc, error) {
-	b, err := os.ReadFile(filepath.Join(repo, ".fvs2", "commits", id+".json"))
-	if err != nil {
-		return commitDoc{}, err
-	}
-	var c commitDoc
-	if err := json.Unmarshal(b, &c); err != nil {
-		return commitDoc{}, err
-	}
-	if len(c.Files) == 0 {
-		// Format 3 keeps the file list in tree objects; the repo library
-		// flattens them regardless of format.
-		entries, err := fvsrepo.StateFiles(repo, id)
-		if err != nil {
-			return commitDoc{}, err
-		}
-		for _, e := range entries {
-			c.Files = append(c.Files, commitFile{
-				Path: e.Path, Mode: e.Mode, Size: e.Size,
-				Blocks: e.Blocks, BlockSizes: e.BlockSizes, Link: e.Link,
-			})
-		}
-	}
-	return c, nil
 }

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	core "fvs-v2-core"
+	fvsrepo "fvs2/repo"
 )
 
 type memStore map[core.BlockID][]byte
@@ -39,7 +40,7 @@ func TestReadAtVariableChunks(t *testing.T) {
 		full = append(full, p...)
 	}
 
-	tree := buildTree(store, 4096, []commitFile{{
+	tree := buildTree(store, 4096, []fvsrepo.FileEntry{{
 		Path:       "f",
 		Mode:       0o644,
 		Size:       int64(len(full)),
@@ -98,7 +99,7 @@ func TestReadAtFixedStillWorks(t *testing.T) {
 		blocks = append(blocks, store.put(data[i:end]))
 	}
 
-	tree := buildTree(store, bs, []commitFile{{
+	tree := buildTree(store, bs, []fvsrepo.FileEntry{{
 		Path:   "f",
 		Mode:   0o644,
 		Size:   int64(len(data)),

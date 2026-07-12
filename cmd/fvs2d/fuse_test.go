@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	core "fvs-v2-core"
+	fvsrepo "fvs2/repo"
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
 )
@@ -16,7 +17,7 @@ func TestFuseNodeCopyUpAndWhiteout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tree := buildTree(store, 4096, []commitFile{{Path: "file", Mode: 0o644, Size: 5, Blocks: []core.BlockID{id}}})
+	tree := buildTree(store, 4096, []fvsrepo.FileEntry{{Path: "file", Mode: 0o644, Size: 5, Blocks: []core.BlockID{id}}})
 	root := newFuseRoot(tree, t.TempDir())
 	_ = fs.NewNodeFS(root, &fs.Options{RootStableAttr: &fs.StableAttr{Ino: 1}})
 
