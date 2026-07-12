@@ -125,6 +125,15 @@ func (mgr *mountManager) create(spec *fvs2dpb.MountSpec) (*fvs2dpb.Mount, error)
 		return nil, status.Error(codes.InvalidArgument, "at least one layer is required")
 	}
 
+	// The mount point is itself a client-supplied filesystem path: without
+	// this check a client could mount an attacker-chosen merged view at any
+	// location on disk (e.g. over another user's directory), bypassing the
+	// --root sandbox entirely even though every layer/upper path is guarded.
+	mountPoint, err := mgr.guard.check(spec.GetMountPoint())
+	if err != nil {
+		return nil, mapError(err)
+	}
+
 	sels := make([]layerSel, 0, len(spec.GetLayers()))
 	for _, l := range spec.GetLayers() {
 		if l.GetRepositoryPath() == "" {
@@ -179,7 +188,7 @@ func (mgr *mountManager) create(spec *fvs2dpb.MountSpec) (*fvs2dpb.Mount, error)
 	}
 
 	root := newFuseRoot(tree, upper)
-	server, err := fs.Mount(spec.GetMountPoint(), root, &fs.Options{
+	server, err := fs.Mount(mountPoint, root, &fs.Options{
 		MountOptions:   fuse.MountOptions{Debug: spec.GetDebug(), FsName: "fvs2d", Name: "fvs2d"},
 		RootStableAttr: &fs.StableAttr{Ino: 1, Gen: 1},
 	})
@@ -197,7 +206,7 @@ func (mgr *mountManager) create(spec *fvs2dpb.MountSpec) (*fvs2dpb.Mount, error)
 		id:       id,
 		spec:     spec,
 		server:   server,
-		point:    spec.GetMountPoint(),
+		point:    mountPoint,
 		resolved: resolved,
 		nodes:    uint64(len(tree.nodes)),
 		at:       time.Now(),

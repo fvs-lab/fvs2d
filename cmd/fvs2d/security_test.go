@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"google.golang.org/grpc/codes"
@@ -356,5 +357,56 @@ func TestCreateMountRejectsEmptyLayerPath(t *testing.T) {
 	})
 	if status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("code = %v, want InvalidArgument (err=%v)", status.Code(err), err)
+	}
+}
+
+// TestCreateMountRejectsMountPointOutsideRoot verifies that, with a
+// sandboxing --root configured, the FUSE mount_point itself (not just the
+// layer/upper paths) is checked against the allowed root. Without this, a
+// client could ask the daemon to mount an arbitrary merged view of
+// attacker-chosen repos at any filesystem location (e.g. over another
+// user's directory), completely bypassing the --root sandbox.
+func TestCreateMountRejectsMountPointOutsideRoot(t *testing.T) {
+	allowed := t.TempDir()
+	outside := t.TempDir()
+	guard, err := newPathGuard(allowed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mgr := newMountManager(guard, nil)
+	_, err = mgr.create(&fvs2dpb.MountSpec{
+		MountPoint: filepath.Join(outside, "mnt"),
+		Layers:     []*fvs2dpb.Layer{{RepositoryPath: filepath.Join(allowed, "repo")}},
+	})
+	if status.Code(err) != codes.PermissionDenied {
+		t.Fatalf("code = %v, want PermissionDenied (err=%v)", status.Code(err), err)
+	}
+}
+
+// TestPathEscapeErrorDoesNotLeakPaths verifies that a rejected path escape
+// does not echo the resolved allowed root or the client-supplied absolute
+// path back in the gRPC error message, which would otherwise leak the
+// daemon's filesystem layout to any client probing the sandbox boundary.
+func TestPathEscapeErrorDoesNotLeakPaths(t *testing.T) {
+	allowed := t.TempDir()
+	outside := t.TempDir()
+	guard, err := newPathGuard(allowed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, checkErr := guard.check(outside)
+	if checkErr == nil {
+		t.Fatal("expected escape to be rejected")
+	}
+	grpcErr := mapError(checkErr)
+	msg := grpcErr.Error()
+	if strings.Contains(msg, allowed) {
+		t.Fatalf("error message leaks allowed root: %q", msg)
+	}
+	if strings.Contains(msg, outside) {
+		t.Fatalf("error message leaks client-supplied path: %q", msg)
+	}
+	if status.Code(grpcErr) != codes.PermissionDenied {
+		t.Fatalf("code = %v, want PermissionDenied", status.Code(grpcErr))
 	}
 }
