@@ -462,6 +462,35 @@ func (n *fuseNode) Mkdir(ctx context.Context, name string, mode uint32, out *fus
 	return n.NewInode(ctx, &fuseNode{state: n.state}, stableAttr(i)), 0
 }
 
+func (n *fuseNode) Symlink(ctx context.Context, target, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
+	if !validName(name) {
+		return nil, syscall.EINVAL
+	}
+	n.state.mu.Lock()
+	defer n.state.mu.Unlock()
+	if !n.state.writable() {
+		return nil, syscall.EROFS
+	}
+	parent := n.path()
+	if err := os.MkdirAll(n.state.upperPath(parent), 0o755); err != nil {
+		return nil, fs.ToErrno(err)
+	}
+	hadWhiteout := n.state.hasWhiteout(parent, name)
+	if err := n.state.clearWhiteout(parent, name); err != nil {
+		return nil, fs.ToErrno(err)
+	}
+	p := joinPath(parent, name)
+	if err := os.Symlink(target, n.state.upperPath(p)); err != nil {
+		if hadWhiteout {
+			_ = n.state.makeWhiteout(parent, name)
+		}
+		return nil, fs.ToErrno(err)
+	}
+	i := n.state.stat(p)
+	n.state.fillAttr(&out.Attr, i)
+	return n.NewInode(ctx, &fuseNode{state: n.state}, stableAttr(i)), 0
+}
+
 func (n *fuseNode) remove(name string, dir bool) syscall.Errno {
 	if !validName(name) {
 		return syscall.EINVAL
@@ -583,6 +612,7 @@ var (
 	_ fs.NodeSetattrer  = (*fuseNode)(nil)
 	_ fs.NodeCreater    = (*fuseNode)(nil)
 	_ fs.NodeMkdirer    = (*fuseNode)(nil)
+	_ fs.NodeSymlinker  = (*fuseNode)(nil)
 	_ fs.NodeUnlinker   = (*fuseNode)(nil)
 	_ fs.NodeRmdirer    = (*fuseNode)(nil)
 	_ fs.NodeRenamer    = (*fuseNode)(nil)

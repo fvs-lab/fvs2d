@@ -7,6 +7,7 @@ import (
 
 	core "fvs-v2-core"
 	fvsrepo "fvs2/repo"
+
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
 )
@@ -42,5 +43,25 @@ func TestFuseNodeCopyUpAndWhiteout(t *testing.T) {
 	}
 	if root.state.stat("file").exists() {
 		t.Fatal("whiteout did not hide lower file")
+	}
+}
+
+func TestFuseNodeReplacesLowerSymlink(t *testing.T) {
+	store := core.NewMemBlockStore()
+	tree := buildTree(store, 4096, []fvsrepo.FileEntry{{Path: "pfx", Link: "."}})
+	root := newFuseRoot(tree, t.TempDir())
+	_ = fs.NewNodeFS(root, &fs.Options{RootStableAttr: &fs.StableAttr{Ino: 1}})
+
+	if errno := root.Unlink(context.Background(), "pfx"); errno != 0 {
+		t.Fatalf("unlink: %v", errno)
+	}
+	if _, errno := root.Symlink(context.Background(), ".", "pfx", &fuse.EntryOut{}); errno != 0 {
+		t.Fatalf("symlink: %v", errno)
+	}
+	if got, err := os.Readlink(root.state.upperPath("pfx")); err != nil || got != "." {
+		t.Fatalf("readlink = %q, %v", got, err)
+	}
+	if root.state.hasWhiteout("", "pfx") {
+		t.Fatal("symlink did not clear whiteout")
 	}
 }
