@@ -13,6 +13,7 @@ import (
 
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
+	"golang.org/x/sys/unix"
 )
 
 type fuseState struct {
@@ -376,12 +377,58 @@ func (n *fuseNode) Setattr(ctx context.Context, fh fs.FileHandle, in *fuse.SetAt
 	if err := n.state.copyUp(p); err != nil {
 		return fs.ToErrno(err)
 	}
-	fh, errno := openLoopback(n.state.upperPath(p), syscall.O_WRONLY, 0)
-	if errno != 0 {
-		return errno
+	path := n.state.upperPath(p)
+	if mode, ok := in.GetMode(); ok {
+		if err := syscall.Chmod(path, mode); err != nil {
+			return fs.ToErrno(err)
+		}
 	}
-	defer fh.(fs.FileReleaser).Release(ctx)
-	return fh.(fs.FileSetattrer).Setattr(ctx, in, out)
+	uid, uidSet := in.GetUID()
+	gid, gidSet := in.GetGID()
+	if uidSet || gidSet {
+		uidValue, gidValue := -1, -1
+		if uidSet {
+			uidValue = int(uid)
+		}
+		if gidSet {
+			gidValue = int(gid)
+		}
+		if err := unix.Fchownat(unix.AT_FDCWD, path, uidValue, gidValue, unix.AT_SYMLINK_NOFOLLOW); err != nil {
+			return fs.ToErrno(err)
+		}
+	}
+	mtime, mtimeSet := in.GetMTime()
+	atime, atimeSet := in.GetATime()
+	if mtimeSet || atimeSet {
+		times := []unix.Timespec{{Nsec: unix.UTIME_OMIT}, {Nsec: unix.UTIME_OMIT}}
+		var err error
+		if atimeSet {
+			times[0], err = unix.TimeToTimespec(atime)
+			if err != nil {
+				return fs.ToErrno(err)
+			}
+		}
+		if mtimeSet {
+			times[1], err = unix.TimeToTimespec(mtime)
+			if err != nil {
+				return fs.ToErrno(err)
+			}
+		}
+		if err := unix.UtimesNanoAt(unix.AT_FDCWD, path, times, unix.AT_SYMLINK_NOFOLLOW); err != nil {
+			return fs.ToErrno(err)
+		}
+	}
+	if size, ok := in.GetSize(); ok {
+		if err := syscall.Truncate(path, int64(size)); err != nil {
+			return fs.ToErrno(err)
+		}
+	}
+	i := n.state.stat(p)
+	if !i.exists() {
+		return syscall.ENOENT
+	}
+	n.state.fillAttr(&out.Attr, i)
+	return 0
 }
 
 func (s *fuseState) clearWhiteout(parent, base string) error {
