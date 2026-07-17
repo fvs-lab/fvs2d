@@ -10,6 +10,7 @@ require (
 	fvs-v2-core v0.0.0-00010101000000-000000000000
 	fvs2 v0.0.0-00010101000000-000000000000
 	github.com/hanwen/go-fuse/v2 v2.10.1
+	golang.org/x/sys v0.44.0
 	google.golang.org/grpc v1.82.0
 	google.golang.org/protobuf v1.36.11
 )
@@ -32,7 +33,6 @@ require (
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/crypto v0.51.0 // indirect
 	golang.org/x/net v0.53.0 // indirect
-	golang.org/x/sys v0.44.0 // indirect
 	golang.org/x/text v0.37.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260414002931-afd174a4e478 // indirect
 	gopkg.in/ini.v1 v1.67.2 // indirect
