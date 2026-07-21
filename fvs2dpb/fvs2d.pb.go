@@ -1912,6 +1912,50 @@ func (x *DiffRequest) GetToState() string {
 	return ""
 }
 
+type DiffMountRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	MountId       string                 `protobuf:"bytes,1,opt,name=mount_id,json=mountId,proto3" json:"mount_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DiffMountRequest) Reset() {
+	*x = DiffMountRequest{}
+	mi := &file_fvs2d_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DiffMountRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DiffMountRequest) ProtoMessage() {}
+
+func (x *DiffMountRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_fvs2d_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DiffMountRequest.ProtoReflect.Descriptor instead.
+func (*DiffMountRequest) Descriptor() ([]byte, []int) {
+	return file_fvs2d_proto_rawDescGZIP(), []int{28}
+}
+
+func (x *DiffMountRequest) GetMountId() string {
+	if x != nil {
+		return x.MountId
+	}
+	return ""
+}
+
 type FileChange struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	Path  string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
@@ -1925,7 +1969,7 @@ type FileChange struct {
 
 func (x *FileChange) Reset() {
 	*x = FileChange{}
-	mi := &file_fvs2d_proto_msgTypes[28]
+	mi := &file_fvs2d_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1937,7 +1981,7 @@ func (x *FileChange) String() string {
 func (*FileChange) ProtoMessage() {}
 
 func (x *FileChange) ProtoReflect() protoreflect.Message {
-	mi := &file_fvs2d_proto_msgTypes[28]
+	mi := &file_fvs2d_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1950,7 +1994,7 @@ func (x *FileChange) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FileChange.ProtoReflect.Descriptor instead.
 func (*FileChange) Descriptor() ([]byte, []int) {
-	return file_fvs2d_proto_rawDescGZIP(), []int{28}
+	return file_fvs2d_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *FileChange) GetPath() string {
@@ -1983,7 +2027,7 @@ type DiffResponse struct {
 
 func (x *DiffResponse) Reset() {
 	*x = DiffResponse{}
-	mi := &file_fvs2d_proto_msgTypes[29]
+	mi := &file_fvs2d_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1995,7 +2039,7 @@ func (x *DiffResponse) String() string {
 func (*DiffResponse) ProtoMessage() {}
 
 func (x *DiffResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_fvs2d_proto_msgTypes[29]
+	mi := &file_fvs2d_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2008,7 +2052,7 @@ func (x *DiffResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DiffResponse.ProtoReflect.Descriptor instead.
 func (*DiffResponse) Descriptor() ([]byte, []int) {
-	return file_fvs2d_proto_rawDescGZIP(), []int{29}
+	return file_fvs2d_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *DiffResponse) GetChanges() []*FileChange {
@@ -2165,7 +2209,9 @@ const file_fvs2d_proto_rawDesc = "" +
 	"\x0frepository_path\x18\x01 \x01(\tR\x0erepositoryPath\x12\x1d\n" +
 	"\n" +
 	"from_state\x18\x02 \x01(\tR\tfromState\x12\x19\n" +
-	"\bto_state\x18\x03 \x01(\tR\atoState\"i\n" +
+	"\bto_state\x18\x03 \x01(\tR\atoState\"-\n" +
+	"\x10DiffMountRequest\x12\x19\n" +
+	"\bmount_id\x18\x01 \x01(\tR\amountId\"i\n" +
 	"\n" +
 	"FileChange\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12(\n" +
@@ -2182,7 +2228,7 @@ const file_fvs2d_proto_rawDesc = "" +
 	"\x17CHANGE_KIND_UNSPECIFIED\x10\x00\x12\x15\n" +
 	"\x11CHANGE_KIND_ADDED\x10\x01\x12\x18\n" +
 	"\x14CHANGE_KIND_MODIFIED\x10\x02\x12\x17\n" +
-	"\x13CHANGE_KIND_REMOVED\x10\x032\xf8\a\n" +
+	"\x13CHANGE_KIND_REMOVED\x10\x032\xb9\b\n" +
 	"\x05Fvs2d\x128\n" +
 	"\x05Probe\x12\x16.google.protobuf.Empty\x1a\x17.fvs2d.v1.ProbeResponse\x12G\n" +
 	"\x0eInitRepository\x12\x1f.fvs2d.v1.InitRepositoryRequest\x1a\x14.fvs2d.v1.Repository\x123\n" +
@@ -2194,7 +2240,8 @@ const file_fvs2d_proto_rawDesc = "" +
 	"\rRestoreStream\x12\x18.fvs2d.v1.RestoreRequest\x1a\x12.fvs2d.v1.Progress0\x01\x12D\n" +
 	"\tListFiles\x12\x1a.fvs2d.v1.ListFilesRequest\x1a\x1b.fvs2d.v1.ListFilesResponse\x12=\n" +
 	"\aGetFile\x12\x18.fvs2d.v1.GetFileRequest\x1a\x16.fvs2d.v1.GetFileChunk0\x01\x125\n" +
-	"\x04Diff\x12\x15.fvs2d.v1.DiffRequest\x1a\x16.fvs2d.v1.DiffResponse\x12<\n" +
+	"\x04Diff\x12\x15.fvs2d.v1.DiffRequest\x1a\x16.fvs2d.v1.DiffResponse\x12?\n" +
+	"\tDiffMount\x12\x1a.fvs2d.v1.DiffMountRequest\x1a\x16.fvs2d.v1.DiffResponse\x12<\n" +
 	"\vCreateMount\x12\x1c.fvs2d.v1.CreateMountRequest\x1a\x0f.fvs2d.v1.Mount\x126\n" +
 	"\bGetMount\x12\x19.fvs2d.v1.GetMountRequest\x1a\x0f.fvs2d.v1.Mount\x12B\n" +
 	"\n" +
@@ -2215,7 +2262,7 @@ func file_fvs2d_proto_rawDescGZIP() []byte {
 }
 
 var file_fvs2d_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_fvs2d_proto_msgTypes = make([]protoimpl.MessageInfo, 30)
+var file_fvs2d_proto_msgTypes = make([]protoimpl.MessageInfo, 31)
 var file_fvs2d_proto_goTypes = []any{
 	(UnmountMode)(0),              // 0: fvs2d.v1.UnmountMode
 	(ChangeKind)(0),               // 1: fvs2d.v1.ChangeKind
@@ -2247,24 +2294,25 @@ var file_fvs2d_proto_goTypes = []any{
 	(*GetFileRequest)(nil),        // 27: fvs2d.v1.GetFileRequest
 	(*GetFileChunk)(nil),          // 28: fvs2d.v1.GetFileChunk
 	(*DiffRequest)(nil),           // 29: fvs2d.v1.DiffRequest
-	(*FileChange)(nil),            // 30: fvs2d.v1.FileChange
-	(*DiffResponse)(nil),          // 31: fvs2d.v1.DiffResponse
-	(*timestamppb.Timestamp)(nil), // 32: google.protobuf.Timestamp
-	(*emptypb.Empty)(nil),         // 33: google.protobuf.Empty
+	(*DiffMountRequest)(nil),      // 30: fvs2d.v1.DiffMountRequest
+	(*FileChange)(nil),            // 31: fvs2d.v1.FileChange
+	(*DiffResponse)(nil),          // 32: fvs2d.v1.DiffResponse
+	(*timestamppb.Timestamp)(nil), // 33: google.protobuf.Timestamp
+	(*emptypb.Empty)(nil),         // 34: google.protobuf.Empty
 }
 var file_fvs2d_proto_depIdxs = []int32{
 	11, // 0: fvs2d.v1.ListCommitsResponse.commits:type_name -> fvs2d.v1.CommitSummary
-	32, // 1: fvs2d.v1.Commit.created_at:type_name -> google.protobuf.Timestamp
-	32, // 2: fvs2d.v1.CommitSummary.created_at:type_name -> google.protobuf.Timestamp
+	33, // 1: fvs2d.v1.Commit.created_at:type_name -> google.protobuf.Timestamp
+	33, // 2: fvs2d.v1.CommitSummary.created_at:type_name -> google.protobuf.Timestamp
 	10, // 3: fvs2d.v1.Progress.result_commit:type_name -> fvs2d.v1.Commit
 	6,  // 4: fvs2d.v1.Progress.result_restore:type_name -> fvs2d.v1.RestoreResponse
-	32, // 5: fvs2d.v1.ProbeResponse.started_at:type_name -> google.protobuf.Timestamp
+	33, // 5: fvs2d.v1.ProbeResponse.started_at:type_name -> google.protobuf.Timestamp
 	14, // 6: fvs2d.v1.Layer.revision:type_name -> fvs2d.v1.CommitSelector
 	15, // 7: fvs2d.v1.MountSpec.layers:type_name -> fvs2d.v1.Layer
 	16, // 8: fvs2d.v1.CreateMountRequest.spec:type_name -> fvs2d.v1.MountSpec
 	16, // 9: fvs2d.v1.Mount.spec:type_name -> fvs2d.v1.MountSpec
 	18, // 10: fvs2d.v1.Mount.resolved_layers:type_name -> fvs2d.v1.ResolvedLayer
-	32, // 11: fvs2d.v1.Mount.mounted_at:type_name -> google.protobuf.Timestamp
+	33, // 11: fvs2d.v1.Mount.mounted_at:type_name -> google.protobuf.Timestamp
 	19, // 12: fvs2d.v1.ListMountsResponse.mounts:type_name -> fvs2d.v1.Mount
 	0,  // 13: fvs2d.v1.UnmountRequest.mode:type_name -> fvs2d.v1.UnmountMode
 	0,  // 14: fvs2d.v1.ShutdownRequest.mode:type_name -> fvs2d.v1.UnmountMode
@@ -2272,8 +2320,8 @@ var file_fvs2d_proto_depIdxs = []int32{
 	25, // 16: fvs2d.v1.ListFilesResponse.files:type_name -> fvs2d.v1.FileInfo
 	14, // 17: fvs2d.v1.GetFileRequest.revision:type_name -> fvs2d.v1.CommitSelector
 	1,  // 18: fvs2d.v1.FileChange.kind:type_name -> fvs2d.v1.ChangeKind
-	30, // 19: fvs2d.v1.DiffResponse.changes:type_name -> fvs2d.v1.FileChange
-	33, // 20: fvs2d.v1.Fvs2d.Probe:input_type -> google.protobuf.Empty
+	31, // 19: fvs2d.v1.DiffResponse.changes:type_name -> fvs2d.v1.FileChange
+	34, // 20: fvs2d.v1.Fvs2d.Probe:input_type -> google.protobuf.Empty
 	7,  // 21: fvs2d.v1.Fvs2d.InitRepository:input_type -> fvs2d.v1.InitRepositoryRequest
 	9,  // 22: fvs2d.v1.Fvs2d.Commit:input_type -> fvs2d.v1.CommitRequest
 	9,  // 23: fvs2d.v1.Fvs2d.CommitStream:input_type -> fvs2d.v1.CommitRequest
@@ -2284,29 +2332,31 @@ var file_fvs2d_proto_depIdxs = []int32{
 	24, // 28: fvs2d.v1.Fvs2d.ListFiles:input_type -> fvs2d.v1.ListFilesRequest
 	27, // 29: fvs2d.v1.Fvs2d.GetFile:input_type -> fvs2d.v1.GetFileRequest
 	29, // 30: fvs2d.v1.Fvs2d.Diff:input_type -> fvs2d.v1.DiffRequest
-	17, // 31: fvs2d.v1.Fvs2d.CreateMount:input_type -> fvs2d.v1.CreateMountRequest
-	20, // 32: fvs2d.v1.Fvs2d.GetMount:input_type -> fvs2d.v1.GetMountRequest
-	33, // 33: fvs2d.v1.Fvs2d.ListMounts:input_type -> google.protobuf.Empty
-	22, // 34: fvs2d.v1.Fvs2d.Unmount:input_type -> fvs2d.v1.UnmountRequest
-	23, // 35: fvs2d.v1.Fvs2d.Shutdown:input_type -> fvs2d.v1.ShutdownRequest
-	13, // 36: fvs2d.v1.Fvs2d.Probe:output_type -> fvs2d.v1.ProbeResponse
-	8,  // 37: fvs2d.v1.Fvs2d.InitRepository:output_type -> fvs2d.v1.Repository
-	10, // 38: fvs2d.v1.Fvs2d.Commit:output_type -> fvs2d.v1.Commit
-	12, // 39: fvs2d.v1.Fvs2d.CommitStream:output_type -> fvs2d.v1.Progress
-	3,  // 40: fvs2d.v1.Fvs2d.ListCommits:output_type -> fvs2d.v1.ListCommitsResponse
-	10, // 41: fvs2d.v1.Fvs2d.GetCommit:output_type -> fvs2d.v1.Commit
-	6,  // 42: fvs2d.v1.Fvs2d.Restore:output_type -> fvs2d.v1.RestoreResponse
-	12, // 43: fvs2d.v1.Fvs2d.RestoreStream:output_type -> fvs2d.v1.Progress
-	26, // 44: fvs2d.v1.Fvs2d.ListFiles:output_type -> fvs2d.v1.ListFilesResponse
-	28, // 45: fvs2d.v1.Fvs2d.GetFile:output_type -> fvs2d.v1.GetFileChunk
-	31, // 46: fvs2d.v1.Fvs2d.Diff:output_type -> fvs2d.v1.DiffResponse
-	19, // 47: fvs2d.v1.Fvs2d.CreateMount:output_type -> fvs2d.v1.Mount
-	19, // 48: fvs2d.v1.Fvs2d.GetMount:output_type -> fvs2d.v1.Mount
-	21, // 49: fvs2d.v1.Fvs2d.ListMounts:output_type -> fvs2d.v1.ListMountsResponse
-	33, // 50: fvs2d.v1.Fvs2d.Unmount:output_type -> google.protobuf.Empty
-	33, // 51: fvs2d.v1.Fvs2d.Shutdown:output_type -> google.protobuf.Empty
-	36, // [36:52] is the sub-list for method output_type
-	20, // [20:36] is the sub-list for method input_type
+	30, // 31: fvs2d.v1.Fvs2d.DiffMount:input_type -> fvs2d.v1.DiffMountRequest
+	17, // 32: fvs2d.v1.Fvs2d.CreateMount:input_type -> fvs2d.v1.CreateMountRequest
+	20, // 33: fvs2d.v1.Fvs2d.GetMount:input_type -> fvs2d.v1.GetMountRequest
+	34, // 34: fvs2d.v1.Fvs2d.ListMounts:input_type -> google.protobuf.Empty
+	22, // 35: fvs2d.v1.Fvs2d.Unmount:input_type -> fvs2d.v1.UnmountRequest
+	23, // 36: fvs2d.v1.Fvs2d.Shutdown:input_type -> fvs2d.v1.ShutdownRequest
+	13, // 37: fvs2d.v1.Fvs2d.Probe:output_type -> fvs2d.v1.ProbeResponse
+	8,  // 38: fvs2d.v1.Fvs2d.InitRepository:output_type -> fvs2d.v1.Repository
+	10, // 39: fvs2d.v1.Fvs2d.Commit:output_type -> fvs2d.v1.Commit
+	12, // 40: fvs2d.v1.Fvs2d.CommitStream:output_type -> fvs2d.v1.Progress
+	3,  // 41: fvs2d.v1.Fvs2d.ListCommits:output_type -> fvs2d.v1.ListCommitsResponse
+	10, // 42: fvs2d.v1.Fvs2d.GetCommit:output_type -> fvs2d.v1.Commit
+	6,  // 43: fvs2d.v1.Fvs2d.Restore:output_type -> fvs2d.v1.RestoreResponse
+	12, // 44: fvs2d.v1.Fvs2d.RestoreStream:output_type -> fvs2d.v1.Progress
+	26, // 45: fvs2d.v1.Fvs2d.ListFiles:output_type -> fvs2d.v1.ListFilesResponse
+	28, // 46: fvs2d.v1.Fvs2d.GetFile:output_type -> fvs2d.v1.GetFileChunk
+	32, // 47: fvs2d.v1.Fvs2d.Diff:output_type -> fvs2d.v1.DiffResponse
+	32, // 48: fvs2d.v1.Fvs2d.DiffMount:output_type -> fvs2d.v1.DiffResponse
+	19, // 49: fvs2d.v1.Fvs2d.CreateMount:output_type -> fvs2d.v1.Mount
+	19, // 50: fvs2d.v1.Fvs2d.GetMount:output_type -> fvs2d.v1.Mount
+	21, // 51: fvs2d.v1.Fvs2d.ListMounts:output_type -> fvs2d.v1.ListMountsResponse
+	34, // 52: fvs2d.v1.Fvs2d.Unmount:output_type -> google.protobuf.Empty
+	34, // 53: fvs2d.v1.Fvs2d.Shutdown:output_type -> google.protobuf.Empty
+	37, // [37:54] is the sub-list for method output_type
+	20, // [20:37] is the sub-list for method input_type
 	20, // [20:20] is the sub-list for extension type_name
 	20, // [20:20] is the sub-list for extension extendee
 	0,  // [0:20] is the sub-list for field type_name
@@ -2330,7 +2380,7 @@ func file_fvs2d_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_fvs2d_proto_rawDesc), len(file_fvs2d_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   30,
+			NumMessages:   31,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

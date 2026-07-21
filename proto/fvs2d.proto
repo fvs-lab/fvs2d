@@ -23,6 +23,7 @@ service Fvs2d {
     rpc ListFiles(ListFilesRequest) returns (ListFilesResponse);
     rpc GetFile(GetFileRequest) returns (stream GetFileChunk);
     rpc Diff(DiffRequest) returns (DiffResponse);
+    rpc DiffMount(DiffMountRequest) returns (DiffResponse);
     rpc CreateMount(CreateMountRequest) returns (Mount);
     rpc GetMount(GetMountRequest) returns (Mount);
     rpc ListMounts(google.protobuf.Empty) returns (ListMountsResponse);
@@ -246,6 +247,10 @@ message DiffRequest {
     string repository_path = 1;
     string from_state = 2;
     string to_state = 3;
+}
+
+message DiffMountRequest {
+    string mount_id = 1;
 }
 
 enum ChangeKind {
