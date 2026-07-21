@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path"
@@ -42,7 +44,7 @@ var supportedOperations = []string{
 	"Probe", "InitRepository",
 	"Commit", "CommitStream", "ListCommits", "GetCommit",
 	"Restore", "RestoreStream",
-	"ListFiles", "GetFile", "Diff",
+	"ListFiles", "GetFile", "Diff", "DiffMount",
 	"CreateMount", "GetMount", "ListMounts", "Unmount", "Shutdown",
 }
 
@@ -53,6 +55,8 @@ type mount struct {
 	server   *fuse.Server
 	point    string
 	resolved []*fvs2dpb.ResolvedLayer
+	tree     *fsTree
+	upper    string
 	nodes    uint64
 	at       time.Time
 }
@@ -208,6 +212,8 @@ func (mgr *mountManager) create(spec *fvs2dpb.MountSpec) (*fvs2dpb.Mount, error)
 		server:   server,
 		point:    mountPoint,
 		resolved: resolved,
+		tree:     tree,
+		upper:    upper,
 		nodes:    uint64(len(tree.nodes)),
 		at:       time.Now(),
 	}
@@ -705,6 +711,141 @@ func (s *fvs2dService) Diff(_ context.Context, req *fvs2dpb.DiffRequest) (*fvs2d
 	}
 	sort.Slice(changes, func(i, j int) bool { return changes[i].Path < changes[j].Path })
 	return &fvs2dpb.DiffResponse{Changes: changes}, nil
+}
+
+func (mgr *mountManager) mountView(id string) (*fsTree, string, error) {
+	mgr.mu.Lock()
+	defer mgr.mu.Unlock()
+	m, ok := mgr.mounts[id]
+	if !ok {
+		return nil, "", status.Errorf(codes.NotFound, "mount %s not found", id)
+	}
+	return m.tree, m.upper, nil
+}
+
+func (s *fvs2dService) DiffMount(_ context.Context, req *fvs2dpb.DiffMountRequest) (*fvs2dpb.DiffResponse, error) {
+	if req.GetMountId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "mount_id is required")
+	}
+	tree, upper, err := s.mgr.mountView(req.GetMountId())
+	if err != nil {
+		return nil, err
+	}
+	var changes []*fvs2dpb.FileChange
+	if upper != "" {
+		if err := diffUpperDir(tree, upper, "", &changes); err != nil {
+			return nil, status.Errorf(codes.Internal, "diff mount: %v", err)
+		}
+	}
+	sort.Slice(changes, func(i, j int) bool { return changes[i].Path < changes[j].Path })
+	return &fvs2dpb.DiffResponse{Changes: changes}, nil
+}
+
+func diffUpperDir(tree *fsTree, upperRoot, rel string, out *[]*fvs2dpb.FileChange) error {
+	entries, err := os.ReadDir(filepath.Join(upperRoot, filepath.FromSlash(rel)))
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if strings.HasPrefix(name, whiteoutPrefix) {
+			real := joinRel(rel, strings.TrimPrefix(name, whiteoutPrefix))
+			delta := int64(0)
+			if lower := lookupTreePath(tree, real); lower != nil {
+				delta = -lower.size
+			}
+			*out = append(*out, &fvs2dpb.FileChange{Path: real, Kind: fvs2dpb.ChangeKind_CHANGE_KIND_REMOVED, SizeDelta: delta})
+			continue
+		}
+		child := joinRel(rel, name)
+		info, err := os.Lstat(filepath.Join(upperRoot, filepath.FromSlash(child)))
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			if err := diffUpperDir(tree, upperRoot, child, out); err != nil {
+				return err
+			}
+			continue
+		}
+		lower := lookupTreePath(tree, child)
+		unchanged, err := entryUnchanged(tree, upperRoot, child, info, lower)
+		if err != nil {
+			return err
+		}
+		if unchanged {
+			continue
+		}
+		if lower == nil {
+			*out = append(*out, &fvs2dpb.FileChange{Path: child, Kind: fvs2dpb.ChangeKind_CHANGE_KIND_ADDED, SizeDelta: info.Size()})
+		} else {
+			*out = append(*out, &fvs2dpb.FileChange{Path: child, Kind: fvs2dpb.ChangeKind_CHANGE_KIND_MODIFIED, SizeDelta: info.Size() - lower.size})
+		}
+	}
+	return nil
+}
+
+func entryUnchanged(tree *fsTree, upperRoot, rel string, info os.FileInfo, lower *fileNode) (bool, error) {
+	if lower == nil || lower.isDir {
+		return false, nil
+	}
+	upperLink := info.Mode()&os.ModeSymlink != 0
+	if upperLink || lower.link != "" {
+		if !upperLink || lower.link == "" {
+			return false, nil
+		}
+		target, err := os.Readlink(filepath.Join(upperRoot, filepath.FromSlash(rel)))
+		if err != nil {
+			return false, err
+		}
+		return target == lower.link, nil
+	}
+	if !info.Mode().IsRegular() {
+		return false, nil
+	}
+	if info.Size() != lower.size || uint32(info.Mode().Perm()) != lower.mode {
+		return false, nil
+	}
+	return sameContent(tree, filepath.Join(upperRoot, filepath.FromSlash(rel)), lower)
+}
+
+func sameContent(tree *fsTree, upperPath string, n *fileNode) (bool, error) {
+	f, err := os.Open(upperPath)
+	if err != nil {
+		return false, err
+	}
+	defer f.Close()
+	const chunk = 1 << 20
+	buf := make([]byte, chunk)
+	var off int64
+	for off < n.size {
+		want := chunk
+		if remaining := n.size - off; remaining < int64(chunk) {
+			want = int(remaining)
+		}
+		lower, err := tree.readAt(n, off, want)
+		if err != nil {
+			return false, err
+		}
+		if len(lower) == 0 {
+			return false, nil
+		}
+		if _, err := io.ReadFull(f, buf[:len(lower)]); err != nil {
+			return false, err
+		}
+		if !bytes.Equal(lower, buf[:len(lower)]) {
+			return false, nil
+		}
+		off += int64(len(lower))
+	}
+	return true, nil
+}
+
+func joinRel(dir, name string) string {
+	if dir == "" {
+		return name
+	}
+	return dir + "/" + name
 }
 
 func (s *fvs2dService) CreateMount(_ context.Context, req *fvs2dpb.CreateMountRequest) (*fvs2dpb.Mount, error) {

@@ -36,6 +36,7 @@ const (
 	Fvs2D_ListFiles_FullMethodName      = "/fvs2d.v1.Fvs2d/ListFiles"
 	Fvs2D_GetFile_FullMethodName        = "/fvs2d.v1.Fvs2d/GetFile"
 	Fvs2D_Diff_FullMethodName           = "/fvs2d.v1.Fvs2d/Diff"
+	Fvs2D_DiffMount_FullMethodName      = "/fvs2d.v1.Fvs2d/DiffMount"
 	Fvs2D_CreateMount_FullMethodName    = "/fvs2d.v1.Fvs2d/CreateMount"
 	Fvs2D_GetMount_FullMethodName       = "/fvs2d.v1.Fvs2d/GetMount"
 	Fvs2D_ListMounts_FullMethodName     = "/fvs2d.v1.Fvs2d/ListMounts"
@@ -58,6 +59,7 @@ type Fvs2DClient interface {
 	ListFiles(ctx context.Context, in *ListFilesRequest, opts ...grpc.CallOption) (*ListFilesResponse, error)
 	GetFile(ctx context.Context, in *GetFileRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[GetFileChunk], error)
 	Diff(ctx context.Context, in *DiffRequest, opts ...grpc.CallOption) (*DiffResponse, error)
+	DiffMount(ctx context.Context, in *DiffMountRequest, opts ...grpc.CallOption) (*DiffResponse, error)
 	CreateMount(ctx context.Context, in *CreateMountRequest, opts ...grpc.CallOption) (*Mount, error)
 	GetMount(ctx context.Context, in *GetMountRequest, opts ...grpc.CallOption) (*Mount, error)
 	ListMounts(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListMountsResponse, error)
@@ -210,6 +212,16 @@ func (c *fvs2DClient) Diff(ctx context.Context, in *DiffRequest, opts ...grpc.Ca
 	return out, nil
 }
 
+func (c *fvs2DClient) DiffMount(ctx context.Context, in *DiffMountRequest, opts ...grpc.CallOption) (*DiffResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DiffResponse)
+	err := c.cc.Invoke(ctx, Fvs2D_DiffMount_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *fvs2DClient) CreateMount(ctx context.Context, in *CreateMountRequest, opts ...grpc.CallOption) (*Mount, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(Mount)
@@ -275,6 +287,7 @@ type Fvs2DServer interface {
 	ListFiles(context.Context, *ListFilesRequest) (*ListFilesResponse, error)
 	GetFile(*GetFileRequest, grpc.ServerStreamingServer[GetFileChunk]) error
 	Diff(context.Context, *DiffRequest) (*DiffResponse, error)
+	DiffMount(context.Context, *DiffMountRequest) (*DiffResponse, error)
 	CreateMount(context.Context, *CreateMountRequest) (*Mount, error)
 	GetMount(context.Context, *GetMountRequest) (*Mount, error)
 	ListMounts(context.Context, *emptypb.Empty) (*ListMountsResponse, error)
@@ -322,6 +335,9 @@ func (UnimplementedFvs2DServer) GetFile(*GetFileRequest, grpc.ServerStreamingSer
 }
 func (UnimplementedFvs2DServer) Diff(context.Context, *DiffRequest) (*DiffResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Diff not implemented")
+}
+func (UnimplementedFvs2DServer) DiffMount(context.Context, *DiffMountRequest) (*DiffResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DiffMount not implemented")
 }
 func (UnimplementedFvs2DServer) CreateMount(context.Context, *CreateMountRequest) (*Mount, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateMount not implemented")
@@ -536,6 +552,24 @@ func _Fvs2D_Diff_Handler(srv interface{}, ctx context.Context, dec func(interfac
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Fvs2D_DiffMount_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DiffMountRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(Fvs2DServer).DiffMount(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Fvs2D_DiffMount_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(Fvs2DServer).DiffMount(ctx, req.(*DiffMountRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _Fvs2D_CreateMount_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(CreateMountRequest)
 	if err := dec(in); err != nil {
@@ -664,6 +698,10 @@ var Fvs2D_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Diff",
 			Handler:    _Fvs2D_Diff_Handler,
+		},
+		{
+			MethodName: "DiffMount",
+			Handler:    _Fvs2D_DiffMount_Handler,
 		},
 		{
 			MethodName: "CreateMount",
