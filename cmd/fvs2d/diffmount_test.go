@@ -47,7 +47,7 @@ func TestDiffUpperDirReportsOnlyRealChanges(t *testing.T) {
 	}
 
 	var changes []*fvs2dpb.FileChange
-	if err := diffUpperDir(tree, upper, "", &changes); err != nil {
+	if err := diffUpperDir(tree, upper, "", true, &changes); err != nil {
 		t.Fatal(err)
 	}
 	sort.Slice(changes, func(i, j int) bool { return changes[i].Path < changes[j].Path })
@@ -67,6 +67,11 @@ func TestDiffUpperDirReportsOnlyRealChanges(t *testing.T) {
 	for p, k := range want {
 		if got[p] != k {
 			t.Fatalf("path %q kind = %v, want %v (all: %+v)", p, got[p], k, got)
+		}
+	}
+	for _, name := range []string{"keep.txt", "link"} {
+		if _, err := os.Lstat(filepath.Join(upper, name)); !os.IsNotExist(err) {
+			t.Fatalf("unchanged %q was not pruned: %v", name, err)
 		}
 	}
 }

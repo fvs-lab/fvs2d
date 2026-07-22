@@ -1913,10 +1913,12 @@ func (x *DiffRequest) GetToState() string {
 }
 
 type DiffMountRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	MountId       string                 `protobuf:"bytes,1,opt,name=mount_id,json=mountId,proto3" json:"mount_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	MountId string                 `protobuf:"bytes,1,opt,name=mount_id,json=mountId,proto3" json:"mount_id,omitempty"`
+	// prune_unchanged removes upper entries identical to the resolved lower.
+	PruneUnchanged bool `protobuf:"varint,2,opt,name=prune_unchanged,json=pruneUnchanged,proto3" json:"prune_unchanged,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *DiffMountRequest) Reset() {
@@ -1954,6 +1956,13 @@ func (x *DiffMountRequest) GetMountId() string {
 		return x.MountId
 	}
 	return ""
+}
+
+func (x *DiffMountRequest) GetPruneUnchanged() bool {
+	if x != nil {
+		return x.PruneUnchanged
+	}
+	return false
 }
 
 type FileChange struct {
@@ -2209,9 +2218,10 @@ const file_fvs2d_proto_rawDesc = "" +
 	"\x0frepository_path\x18\x01 \x01(\tR\x0erepositoryPath\x12\x1d\n" +
 	"\n" +
 	"from_state\x18\x02 \x01(\tR\tfromState\x12\x19\n" +
-	"\bto_state\x18\x03 \x01(\tR\atoState\"-\n" +
+	"\bto_state\x18\x03 \x01(\tR\atoState\"V\n" +
 	"\x10DiffMountRequest\x12\x19\n" +
-	"\bmount_id\x18\x01 \x01(\tR\amountId\"i\n" +
+	"\bmount_id\x18\x01 \x01(\tR\amountId\x12'\n" +
+	"\x0fprune_unchanged\x18\x02 \x01(\bR\x0epruneUnchanged\"i\n" +
 	"\n" +
 	"FileChange\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12(\n" +
