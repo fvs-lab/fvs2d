@@ -251,6 +251,8 @@ message DiffRequest {
 
 message DiffMountRequest {
     string mount_id = 1;
+    // prune_unchanged removes upper entries identical to the resolved lower.
+    bool prune_unchanged = 2;
 }
 
 enum ChangeKind {

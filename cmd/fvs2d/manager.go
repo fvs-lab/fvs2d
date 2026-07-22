@@ -733,7 +733,7 @@ func (s *fvs2dService) DiffMount(_ context.Context, req *fvs2dpb.DiffMountReques
 	}
 	var changes []*fvs2dpb.FileChange
 	if upper != "" {
-		if err := diffUpperDir(tree, upper, "", &changes); err != nil {
+		if err := diffUpperDir(tree, upper, "", req.GetPruneUnchanged(), &changes); err != nil {
 			return nil, status.Errorf(codes.Internal, "diff mount: %v", err)
 		}
 	}
@@ -741,7 +741,7 @@ func (s *fvs2dService) DiffMount(_ context.Context, req *fvs2dpb.DiffMountReques
 	return &fvs2dpb.DiffResponse{Changes: changes}, nil
 }
 
-func diffUpperDir(tree *fsTree, upperRoot, rel string, out *[]*fvs2dpb.FileChange) error {
+func diffUpperDir(tree *fsTree, upperRoot, rel string, prune bool, out *[]*fvs2dpb.FileChange) error {
 	entries, err := os.ReadDir(filepath.Join(upperRoot, filepath.FromSlash(rel)))
 	if err != nil {
 		return err
@@ -763,8 +763,19 @@ func diffUpperDir(tree *fsTree, upperRoot, rel string, out *[]*fvs2dpb.FileChang
 			return err
 		}
 		if info.IsDir() {
-			if err := diffUpperDir(tree, upperRoot, child, out); err != nil {
+			if err := diffUpperDir(tree, upperRoot, child, prune, out); err != nil {
 				return err
+			}
+			if prune {
+				children, err := os.ReadDir(filepath.Join(upperRoot, filepath.FromSlash(child)))
+				if err != nil {
+					return err
+				}
+				if len(children) == 0 {
+					if err := os.Remove(filepath.Join(upperRoot, filepath.FromSlash(child))); err != nil {
+						return err
+					}
+				}
 			}
 			continue
 		}
@@ -774,6 +785,11 @@ func diffUpperDir(tree *fsTree, upperRoot, rel string, out *[]*fvs2dpb.FileChang
 			return err
 		}
 		if unchanged {
+			if prune {
+				if err := os.Remove(filepath.Join(upperRoot, filepath.FromSlash(child))); err != nil {
+					return err
+				}
+			}
 			continue
 		}
 		if lower == nil {
