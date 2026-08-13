@@ -2,10 +2,11 @@ package main
 
 import (
 	"bytes"
+	"syscall"
 	"testing"
 
-	core "fvs-v2-core"
-	fvsrepo "fvs2/repo"
+	core "github.com/fvs-lab/core"
+	fvsrepo "github.com/fvs-lab/fvs2/repo"
 )
 
 type memStore map[core.BlockID][]byte
@@ -16,6 +17,25 @@ func (m memStore) Get(id core.BlockID) ([]byte, error) {
 		return nil, core.ErrBlockNotFound
 	}
 	return b, nil
+}
+
+func TestBuildTreePreservesDirectoryAndFIFO(t *testing.T) {
+	store := memStore{}
+	tree := buildTree(store, 4096, []fvsrepo.FileEntry{
+		{Path: "run", Kind: "dir", Mode: 0o750},
+		{Path: "run/control", Kind: "fifo", Mode: 0o620},
+	})
+	dir := tree.get(tree.lookup(1, "run"))
+	if dir == nil || !dir.isDir || dir.mode != 0o750 {
+		t.Fatalf("directory = %+v", dir)
+	}
+	fifo := tree.get(tree.lookup(dir.ino, "control"))
+	if fifo == nil || fifo.kind != "fifo" {
+		t.Fatalf("fifo = %+v", fifo)
+	}
+	if got := (pathInfo{lower: fifo}).mode(); got != syscall.S_IFIFO|0o620 {
+		t.Fatalf("fifo mode = %#o", got)
+	}
 }
 
 func (m memStore) put(data []byte) core.BlockID {

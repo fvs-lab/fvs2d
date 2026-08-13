@@ -3,13 +3,13 @@ package main
 import (
 	"errors"
 	"fmt"
-	fvsrepo "fvs2/repo"
+	fvsrepo "github.com/fvs-lab/fvs2/repo"
 	"path"
 	"path/filepath"
 	"sort"
 	"strings"
 
-	core "fvs-v2-core"
+	core "github.com/fvs-lab/core"
 )
 
 // fileNode is a single entry in the mounted tree, addressed by inode number.
@@ -17,6 +17,7 @@ type fileNode struct {
 	ino    uint64
 	name   string
 	isDir  bool
+	kind   string
 	link   string // symlink target, empty for non-symlinks
 	mode   uint32 // permission bits only
 	size   int64
@@ -154,6 +155,7 @@ func buildTree(store blockGetter, blockSize int, files []fvsrepo.FileEntry) *fsT
 	root := &fileNode{ino: 1, isDir: true, mode: 0o755, children: map[string]uint64{}}
 	t.nodes[1] = root
 	var next uint64 = 2
+	blocks := make(map[core.BlockID]core.BlockID)
 
 	ensureDir := func(parent uint64, name string) uint64 {
 		p := t.nodes[parent]
@@ -176,11 +178,30 @@ func buildTree(store blockGetter, blockSize int, files []fvsrepo.FileEntry) *fsT
 		}
 		parts := strings.Split(clean, "/")
 		parent := uint64(1)
-		for i := 0; i < len(parts)-1; i++ {
+		limit := len(parts) - 1
+		if f.Kind == "dir" {
+			limit = len(parts)
+		}
+		for i := 0; i < limit; i++ {
 			parent = ensureDir(parent, parts[i])
 		}
+		if f.Kind == "dir" {
+			n := t.nodes[parent]
+			n.mode = f.Mode
+			if n.mode == 0 {
+				n.mode = 0o755
+			}
+			continue
+		}
 		leaf := parts[len(parts)-1]
-		n := &fileNode{ino: next, name: leaf, mode: f.Mode, size: f.Size, blocks: f.Blocks, link: f.Link}
+		for i, block := range f.Blocks {
+			if existing, ok := blocks[block]; ok {
+				f.Blocks[i] = existing
+				continue
+			}
+			blocks[block] = block
+		}
+		n := &fileNode{ino: next, name: leaf, kind: f.Kind, mode: f.Mode, size: f.Size, blocks: f.Blocks, link: f.Link}
 		if len(f.BlockSizes) == len(f.Blocks) && len(f.Blocks) > 0 {
 			offsets := make([]int64, len(f.BlockSizes))
 			var pos int64
@@ -240,6 +261,7 @@ const whiteoutPrefix = ".wh."
 type resolvedCommit struct {
 	repo      string
 	stateID   string
+	blocks    string
 	blockSize int
 	files     []fvsrepo.FileEntry
 }
@@ -248,22 +270,38 @@ type resolvedCommit struct {
 // package, so callers that need the same layer for both a manifest response
 // and tree construction can resolve it exactly once (see mountManager.create).
 func resolveLayer(sel layerSel) (resolvedCommit, error) {
+	id, err := resolveLayerState(sel)
+	if err != nil {
+		return resolvedCommit{}, err
+	}
+	return loadResolvedLayer(sel.repo, id)
+}
+
+func resolveLayerState(sel layerSel) (string, error) {
 	id, err := fvsrepo.ResolveCommit(sel.repo, sel.state, sel.branch)
 	if err != nil {
-		return resolvedCommit{}, err
+		return "", err
 	}
 	if id == "" {
-		return resolvedCommit{}, errors.New("no commit to mount (empty branch or no states)")
+		return "", errors.New("no commit to mount (empty branch or no states)")
 	}
-	detail, err := fvsrepo.DescribeState(sel.repo, id)
+	return id, nil
+}
+
+func loadResolvedLayer(repository, id string) (resolvedCommit, error) {
+	detail, err := fvsrepo.DescribeState(repository, id)
 	if err != nil {
 		return resolvedCommit{}, err
 	}
-	files, err := fvsrepo.StateFiles(sel.repo, id)
+	files, err := fvsrepo.StateFiles(repository, id)
 	if err != nil {
 		return resolvedCommit{}, err
 	}
-	return resolvedCommit{repo: sel.repo, stateID: id, blockSize: detail.BlockSize, files: files}, nil
+	blocks, err := fvsrepo.BlockStorePath(repository)
+	if err != nil {
+		return resolvedCommit{}, err
+	}
+	return resolvedCommit{repo: repository, stateID: id, blocks: blocks, blockSize: detail.BlockSize, files: files}, nil
 }
 
 // buildTreeFromRepo resolves a commit (by prefix, branch, or HEAD) inside a repo
@@ -275,7 +313,7 @@ func buildTreeFromRepo(repo, statePrefix, branch, blocksOverride string) (*fsTre
 	}
 	blocks := blocksOverride
 	if blocks == "" {
-		blocks = filepath.Join(repo, ".fvs2", "blocks")
+		blocks = rc.blocks
 	}
 	store, err := core.NewDiskBlockStore(blocks)
 	if err != nil {
@@ -309,17 +347,17 @@ func buildMergedTreeFromRepos(layers []resolvedCommit, blocksOverride string) (*
 		}
 		files[p] = f
 	}
-	del := func(p string) {
-		if _, ok := files[p]; !ok {
-			return
-		}
-		delete(files, p)
-		for i, q := range order {
-			if q == p {
-				order = append(order[:i], order[i+1:]...)
-				break
+	del := func(p string, children bool) {
+		prefix := p + "/"
+		kept := order[:0]
+		for _, q := range order {
+			if q == p || children && strings.HasPrefix(q, prefix) {
+				delete(files, q)
+				continue
 			}
+			kept = append(kept, q)
 		}
+		order = kept
 	}
 
 	for _, rc := range layers {
@@ -328,7 +366,7 @@ func buildMergedTreeFromRepos(layers []resolvedCommit, blocksOverride string) (*
 		}
 		blocks := blocksOverride
 		if blocks == "" {
-			blocks = filepath.Join(rc.repo, ".fvs2", "blocks")
+			blocks = rc.blocks
 		}
 		store, err := core.NewDiskBlockStore(blocks)
 		if err != nil {
@@ -342,8 +380,30 @@ func buildMergedTreeFromRepos(layers []resolvedCommit, blocksOverride string) (*
 				continue
 			}
 			if base := path.Base(clean); strings.HasPrefix(base, whiteoutPrefix) {
-				target := strings.Trim(path.Join(path.Dir(clean), strings.TrimPrefix(base, whiteoutPrefix)), "/")
-				del(target)
+				dir := strings.Trim(path.Dir(clean), "/")
+				if base == ".wh..wh..opq" {
+					prefix := dir
+					if prefix != "" {
+						prefix += "/"
+					}
+					for _, existing := range append([]string(nil), order...) {
+						if strings.HasPrefix(existing, prefix) && existing != dir {
+							del(existing, true)
+						}
+					}
+					continue
+				}
+				target := strings.Trim(path.Join(dir, strings.TrimPrefix(base, whiteoutPrefix)), "/")
+				del(target, true)
+			}
+		}
+
+		for _, f := range rc.files {
+			clean := strings.Trim(filepath.ToSlash(f.Path), "/")
+			if clean == "" {
+				continue
+			}
+			if strings.HasPrefix(path.Base(clean), whiteoutPrefix) {
 				continue
 			}
 			add(clean, f)

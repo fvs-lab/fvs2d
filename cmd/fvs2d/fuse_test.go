@@ -5,8 +5,8 @@ import (
 	"os"
 	"testing"
 
-	core "fvs-v2-core"
-	fvsrepo "fvs2/repo"
+	core "github.com/fvs-lab/core"
+	fvsrepo "github.com/fvs-lab/fvs2/repo"
 
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
@@ -73,6 +73,20 @@ func TestFuseNodeSetattrRestoresWritePermission(t *testing.T) {
 	}
 	if info.Mode().Perm() != 0o775 {
 		t.Fatalf("mode = %v", info.Mode().Perm())
+	}
+}
+
+func TestFuseViewCanClearPrivilegedBits(t *testing.T) {
+	tree := buildTree(core.NewMemBlockStore(), 4096, []fvsrepo.FileEntry{{Path: "helper", Mode: 0o6755}})
+	root := newFuseRootWithOptions(tree, "", true)
+	_ = fs.NewNodeFS(root, &fs.Options{RootStableAttr: &fs.StableAttr{Ino: 1}})
+
+	entry := &fuse.EntryOut{}
+	if _, errno := root.Lookup(context.Background(), "helper", entry); errno != 0 {
+		t.Fatalf("lookup: %v", errno)
+	}
+	if got := entry.Attr.Mode & 0o7777; got != 0o755 {
+		t.Fatalf("mode = %#o", got)
 	}
 }
 

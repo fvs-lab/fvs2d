@@ -17,13 +17,14 @@ import (
 )
 
 type fuseState struct {
-	lower *fsTree
-	upper string
-	root  *fuseNode
-	mu    sync.Mutex
-	uid   uint32
-	gid   uint32
-	mtime uint64
+	lower               *fsTree
+	upper               string
+	root                *fuseNode
+	mu                  sync.Mutex
+	uid                 uint32
+	gid                 uint32
+	mtime               uint64
+	clearPrivilegedBits bool
 }
 
 type fuseNode struct {
@@ -37,12 +38,17 @@ type pathInfo struct {
 }
 
 func newFuseRoot(lower *fsTree, upper string) *fuseNode {
+	return newFuseRootWithOptions(lower, upper, false)
+}
+
+func newFuseRootWithOptions(lower *fsTree, upper string, clearPrivilegedBits bool) *fuseNode {
 	s := &fuseState{
-		lower: lower,
-		upper: upper,
-		uid:   uint32(os.Getuid()),
-		gid:   uint32(os.Getgid()),
-		mtime: uint64(time.Now().Unix()),
+		lower:               lower,
+		upper:               upper,
+		uid:                 uint32(os.Getuid()),
+		gid:                 uint32(os.Getgid()),
+		mtime:               uint64(time.Now().Unix()),
+		clearPrivilegedBits: clearPrivilegedBits,
 	}
 	s.root = &fuseNode{state: s}
 	return s.root
@@ -124,8 +130,10 @@ func (i pathInfo) mode() uint32 {
 	switch {
 	case i.lower.isDir:
 		return syscall.S_IFDIR | i.lower.mode&0o7777
-	case i.lower.link != "":
+	case i.lower.kind == "symlink" || i.lower.link != "":
 		return syscall.S_IFLNK | 0o777
+	case i.lower.kind == "fifo":
+		return syscall.S_IFIFO | i.lower.mode&0o7777
 	default:
 		return syscall.S_IFREG | i.lower.mode&0o7777
 	}
@@ -134,12 +142,20 @@ func (i pathInfo) mode() uint32 {
 func (i pathInfo) isDir() bool  { return i.mode()&syscall.S_IFMT == syscall.S_IFDIR }
 func (i pathInfo) isLink() bool { return i.mode()&syscall.S_IFMT == syscall.S_IFLNK }
 
+func (s *fuseState) mode(i pathInfo) uint32 {
+	mode := i.mode()
+	if s.clearPrivilegedBits {
+		mode &^= syscall.S_ISUID | syscall.S_ISGID
+	}
+	return mode
+}
+
 func (s *fuseState) fillAttr(out *fuse.Attr, i pathInfo) {
 	if i.upper != nil {
 		out.FromStat(i.upper)
 		return
 	}
-	out.Mode = i.mode()
+	out.Mode = s.mode(i)
 	out.Uid = s.uid
 	out.Gid = s.gid
 	out.Atime = s.mtime
@@ -229,7 +245,7 @@ func (s *fuseState) dirEntries(p string) ([]fuse.DirEntry, syscall.Errno) {
 	for _, name := range sorted {
 		child := s.stat(joinPath(p, name))
 		if child.exists() {
-			out = append(out, fuse.DirEntry{Name: name, Mode: child.mode(), Ino: stableAttr(child).Ino})
+			out = append(out, fuse.DirEntry{Name: name, Mode: s.mode(child), Ino: stableAttr(child).Ino})
 		}
 	}
 	return out, 0
@@ -288,7 +304,11 @@ func (s *fuseState) copyUp(p string) error {
 	if lower.link != "" {
 		return os.Symlink(lower.link, up)
 	}
-	f, err := os.OpenFile(up, os.O_CREATE|os.O_EXCL|os.O_WRONLY, os.FileMode(lower.mode&0o7777))
+	mode := lower.mode & 0o7777
+	if s.clearPrivilegedBits {
+		mode &^= syscall.S_ISUID | syscall.S_ISGID
+	}
+	f, err := os.OpenFile(up, os.O_CREATE|os.O_EXCL|os.O_WRONLY, os.FileMode(mode))
 	if err != nil {
 		return err
 	}

@@ -12,7 +12,7 @@ import (
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
 
-	"fvs2d/internal/runtime"
+	"github.com/fvs-lab/fvs2d/internal/runtime"
 )
 
 type stringList []string

@@ -13,7 +13,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	"fvs2d/fvs2dpb"
+	"github.com/fvs-lab/fvs2d/fvs2dpb"
 )
 
 // TestPathGuardRejectsEscape verifies the allowed-root sandbox (item 2):

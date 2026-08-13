@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	fvsrepo "fvs2/repo"
+	fvsrepo "github.com/fvs-lab/fvs2/repo"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

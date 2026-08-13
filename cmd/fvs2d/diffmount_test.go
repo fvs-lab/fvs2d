@@ -6,9 +6,9 @@ import (
 	"sort"
 	"testing"
 
-	core "fvs-v2-core"
-	fvsrepo "fvs2/repo"
-	"fvs2d/fvs2dpb"
+	core "github.com/fvs-lab/core"
+	fvsrepo "github.com/fvs-lab/fvs2/repo"
+	"github.com/fvs-lab/fvs2d/fvs2dpb"
 )
 
 func put(t *testing.T, store *core.MemBlockStore, b string) core.BlockID {

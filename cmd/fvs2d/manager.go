@@ -11,6 +11,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
@@ -27,10 +28,10 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	core "fvs-v2-core"
-	fvsrepo "fvs2/repo"
-	"fvs2d/fvs2dpb"
-	"fvs2d/internal/runtime"
+	core "github.com/fvs-lab/core"
+	fvsrepo "github.com/fvs-lab/fvs2/repo"
+	"github.com/fvs-lab/fvs2d/fvs2dpb"
+	"github.com/fvs-lab/fvs2d/internal/runtime"
 )
 
 const (
@@ -59,6 +60,12 @@ type mount struct {
 	upper    string
 	nodes    uint64
 	at       time.Time
+	treeKey  string
+}
+
+type cachedTree struct {
+	tree *fsTree
+	refs int
 }
 
 func (m *mount) proto() *fvs2dpb.Mount {
@@ -76,6 +83,7 @@ func (m *mount) proto() *fvs2dpb.Mount {
 type mountManager struct {
 	mu      sync.Mutex
 	mounts  map[string]*mount
+	trees   map[string]*cachedTree
 	started time.Time
 	guard   *pathGuard
 	logf    func(format string, args ...any)
@@ -88,7 +96,60 @@ func newMountManager(guard *pathGuard, logf func(format string, args ...any)) *m
 	if logf == nil {
 		logf = func(string, ...any) {}
 	}
-	return &mountManager{mounts: map[string]*mount{}, started: time.Now(), guard: guard, logf: logf}
+	return &mountManager{
+		mounts:  map[string]*mount{},
+		trees:   map[string]*cachedTree{},
+		started: time.Now(),
+		guard:   guard,
+		logf:    logf,
+	}
+}
+
+func (mgr *mountManager) acquireTree(layers []resolvedCommit) (string, *fsTree, error) {
+	keys := make([]string, 0, len(layers))
+	for _, layer := range layers {
+		keys = append(keys, layer.repo+"\x00"+layer.stateID)
+	}
+	key := strings.Join(keys, "\x1f")
+	mgr.mu.Lock()
+	if cached := mgr.trees[key]; cached != nil {
+		cached.refs++
+		tree := cached.tree
+		mgr.mu.Unlock()
+		return key, tree, nil
+	}
+	mgr.mu.Unlock()
+
+	tree, err := buildMergedTreeFromRepos(layers, "")
+	if err != nil {
+		return "", nil, err
+	}
+	mgr.mu.Lock()
+	if cached := mgr.trees[key]; cached != nil {
+		cached.refs++
+		tree = cached.tree
+	} else {
+		mgr.trees[key] = &cachedTree{tree: tree, refs: 1}
+	}
+	mgr.mu.Unlock()
+	return key, tree, nil
+}
+
+func (mgr *mountManager) releaseTree(key string) {
+	mgr.mu.Lock()
+	defer mgr.mu.Unlock()
+	tree := mgr.trees[key]
+	if tree == nil {
+		return
+	}
+	tree.refs--
+	if tree.refs == 0 {
+		delete(mgr.trees, key)
+	}
+}
+
+func (mgr *mountManager) releaseMountCaches(m *mount) {
+	mgr.releaseTree(m.treeKey)
 }
 
 func newMountID() (string, error) {
@@ -152,9 +213,6 @@ func (mgr *mountManager) create(spec *fvs2dpb.MountSpec) (*fvs2dpb.Mount, error)
 		sels = append(sels, sel)
 	}
 
-	// Resolve and load each layer's commit exactly once here, then hand the
-	// resolved data to buildMergedTreeFromRepos instead of letting it
-	// re-resolve/re-load every layer a second time.
 	resolvedCommits := make([]resolvedCommit, 0, len(sels))
 	for _, sel := range sels {
 		rc, err := resolveLayer(sel)
@@ -169,15 +227,21 @@ func (mgr *mountManager) create(spec *fvs2dpb.MountSpec) (*fvs2dpb.Mount, error)
 		resolved = append(resolved, &fvs2dpb.ResolvedLayer{
 			RepositoryPath: rc.repo,
 			StateId:        rc.stateID,
-			BlocksPath:     filepath.Join(rc.repo, ".fvs2", "blocks"),
+			BlocksPath:     rc.blocks,
 			BlockSize:      uint32(rc.blockSize),
 		})
 	}
 
-	tree, err := buildMergedTreeFromRepos(resolvedCommits, "")
+	treeKey, tree, err := mgr.acquireTree(resolvedCommits)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "build tree: %v", err)
 	}
+	treeHeld := true
+	defer func() {
+		if treeHeld {
+			mgr.releaseTree(treeKey)
+		}
+	}()
 
 	upper := spec.GetUpperPath()
 	if upper != "" {
@@ -191,7 +255,7 @@ func (mgr *mountManager) create(spec *fvs2dpb.MountSpec) (*fvs2dpb.Mount, error)
 		}
 	}
 
-	root := newFuseRoot(tree, upper)
+	root := newFuseRootWithOptions(tree, upper, spec.GetClearPrivilegedBits())
 	server, err := fs.Mount(mountPoint, root, &fs.Options{
 		MountOptions:   fuse.MountOptions{Debug: spec.GetDebug(), FsName: "fvs2d", Name: "fvs2d"},
 		RootStableAttr: &fs.StableAttr{Ino: 1, Gen: 1},
@@ -216,11 +280,14 @@ func (mgr *mountManager) create(spec *fvs2dpb.MountSpec) (*fvs2dpb.Mount, error)
 		upper:    upper,
 		nodes:    uint64(len(tree.nodes)),
 		at:       time.Now(),
+		treeKey:  treeKey,
 	}
 
 	mgr.mu.Lock()
 	mgr.mounts[id] = m
 	mgr.mu.Unlock()
+	treeHeld = false
+	debug.FreeOSMemory()
 	return m.proto(), nil
 }
 
@@ -265,6 +332,7 @@ func (mgr *mountManager) unmount(id string, lazy bool) error {
 	if !ok {
 		return status.Errorf(codes.NotFound, "no mount with id %q", id)
 	}
+	defer mgr.releaseMountCaches(m)
 	if err := mgr.detach(m, lazy); err != nil {
 		return status.Errorf(codes.Internal, "unmount %s: %v", m.point, err)
 	}
@@ -283,6 +351,7 @@ func (mgr *mountManager) unmountAll(lazy bool) {
 	}
 	mgr.mu.Unlock()
 	for _, m := range all {
+		mgr.releaseMountCaches(m)
 		if err := mgr.detach(m, lazy); err != nil {
 			mgr.logf("manager: unmount %s (%s) failed: %v\n", m.id, m.point, err)
 		}

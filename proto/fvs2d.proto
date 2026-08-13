@@ -6,7 +6,7 @@ syntax = "proto3";
 // declaration in the same change.
 package fvs2d.v1;
 
-option go_package = "fvs2d/fvs2dpb;fvs2dpb";
+option go_package = "github.com/fvs-lab/fvs2d/fvs2dpb;fvs2dpb";
 
 import "google/protobuf/empty.proto";
 import "google/protobuf/timestamp.proto";
@@ -164,6 +164,7 @@ message MountSpec {
     repeated Layer layers = 2;
     optional string upper_path = 3;
     bool debug = 4;
+    bool clear_privileged_bits = 5;
 }
 
 message CreateMountRequest {

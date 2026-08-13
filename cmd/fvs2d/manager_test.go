@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"fvs2d/fvs2dpb"
+	"github.com/fvs-lab/fvs2d/fvs2dpb"
 )
 
 func TestParseControlAddr(t *testing.T) {

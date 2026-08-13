@@ -1,14 +1,10 @@
-module fvs2d
+module github.com/fvs-lab/fvs2d
 
 go 1.25.0
 
-replace fvs-v2-core => ../core
-
-replace fvs2 => ../fvs2
-
 require (
-	fvs-v2-core v0.0.0-00010101000000-000000000000
-	fvs2 v0.0.0-00010101000000-000000000000
+	github.com/fvs-lab/core v0.1.2
+	github.com/fvs-lab/fvs2 v0.10.0
 	github.com/hanwen/go-fuse/v2 v2.10.1
 	golang.org/x/sys v0.44.0
 	google.golang.org/grpc v1.82.0

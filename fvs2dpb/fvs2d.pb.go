@@ -1125,13 +1125,14 @@ func (x *Layer) GetRevision() *CommitSelector {
 }
 
 type MountSpec struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	MountPoint    string                 `protobuf:"bytes,1,opt,name=mount_point,json=mountPoint,proto3" json:"mount_point,omitempty"`
-	Layers        []*Layer               `protobuf:"bytes,2,rep,name=layers,proto3" json:"layers,omitempty"`
-	UpperPath     *string                `protobuf:"bytes,3,opt,name=upper_path,json=upperPath,proto3,oneof" json:"upper_path,omitempty"`
-	Debug         bool                   `protobuf:"varint,4,opt,name=debug,proto3" json:"debug,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state               protoimpl.MessageState `protogen:"open.v1"`
+	MountPoint          string                 `protobuf:"bytes,1,opt,name=mount_point,json=mountPoint,proto3" json:"mount_point,omitempty"`
+	Layers              []*Layer               `protobuf:"bytes,2,rep,name=layers,proto3" json:"layers,omitempty"`
+	UpperPath           *string                `protobuf:"bytes,3,opt,name=upper_path,json=upperPath,proto3,oneof" json:"upper_path,omitempty"`
+	Debug               bool                   `protobuf:"varint,4,opt,name=debug,proto3" json:"debug,omitempty"`
+	ClearPrivilegedBits bool                   `protobuf:"varint,5,opt,name=clear_privileged_bits,json=clearPrivilegedBits,proto3" json:"clear_privileged_bits,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *MountSpec) Reset() {
@@ -1188,6 +1189,13 @@ func (x *MountSpec) GetUpperPath() string {
 func (x *MountSpec) GetDebug() bool {
 	if x != nil {
 		return x.Debug
+	}
+	return false
+}
+
+func (x *MountSpec) GetClearPrivilegedBits() bool {
+	if x != nil {
+		return x.ClearPrivilegedBits
 	}
 	return false
 }
@@ -2160,14 +2168,15 @@ const file_fvs2d_proto_rawDesc = "" +
 	"\bselector\"f\n" +
 	"\x05Layer\x12'\n" +
 	"\x0frepository_path\x18\x01 \x01(\tR\x0erepositoryPath\x124\n" +
-	"\brevision\x18\x02 \x01(\v2\x18.fvs2d.v1.CommitSelectorR\brevision\"\x9e\x01\n" +
+	"\brevision\x18\x02 \x01(\v2\x18.fvs2d.v1.CommitSelectorR\brevision\"\xd2\x01\n" +
 	"\tMountSpec\x12\x1f\n" +
 	"\vmount_point\x18\x01 \x01(\tR\n" +
 	"mountPoint\x12'\n" +
 	"\x06layers\x18\x02 \x03(\v2\x0f.fvs2d.v1.LayerR\x06layers\x12\"\n" +
 	"\n" +
 	"upper_path\x18\x03 \x01(\tH\x00R\tupperPath\x88\x01\x01\x12\x14\n" +
-	"\x05debug\x18\x04 \x01(\bR\x05debugB\r\n" +
+	"\x05debug\x18\x04 \x01(\bR\x05debug\x122\n" +
+	"\x15clear_privileged_bits\x18\x05 \x01(\bR\x13clearPrivilegedBitsB\r\n" +
 	"\v_upper_path\"=\n" +
 	"\x12CreateMountRequest\x12'\n" +
 	"\x04spec\x18\x01 \x01(\v2\x13.fvs2d.v1.MountSpecR\x04spec\"\x93\x01\n" +
@@ -2257,7 +2266,7 @@ const file_fvs2d_proto_rawDesc = "" +
 	"\n" +
 	"ListMounts\x12\x16.google.protobuf.Empty\x1a\x1c.fvs2d.v1.ListMountsResponse\x12;\n" +
 	"\aUnmount\x12\x18.fvs2d.v1.UnmountRequest\x1a\x16.google.protobuf.Empty\x12=\n" +
-	"\bShutdown\x12\x19.fvs2d.v1.ShutdownRequest\x1a\x16.google.protobuf.EmptyB\x17Z\x15fvs2d/fvs2dpb;fvs2dpbb\x06proto3"
+	"\bShutdown\x12\x19.fvs2d.v1.ShutdownRequest\x1a\x16.google.protobuf.EmptyB*Z(github.com/fvs-lab/fvs2d/fvs2dpb;fvs2dpbb\x06proto3"
 
 var (
 	file_fvs2d_proto_rawDescOnce sync.Once
