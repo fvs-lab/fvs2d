@@ -3,13 +3,13 @@ package main
 import (
 	"errors"
 	"fmt"
-	fvsrepo "fvs2/repo"
+	fvsrepo "github.com/fvs-lab/fvs2/repo"
 	"path"
 	"path/filepath"
 	"sort"
 	"strings"
 
-	core "fvs-v2-core"
+	core "github.com/fvs-lab/core"
 )
 
 // fileNode is a single entry in the mounted tree, addressed by inode number.

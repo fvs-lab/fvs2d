@@ -5,8 +5,8 @@ import (
 	"os"
 	"testing"
 
-	core "fvs-v2-core"
-	fvsrepo "fvs2/repo"
+	core "github.com/fvs-lab/core"
+	fvsrepo "github.com/fvs-lab/fvs2/repo"
 
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"

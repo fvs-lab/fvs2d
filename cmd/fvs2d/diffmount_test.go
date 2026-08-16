@@ -6,8 +6,8 @@ import (
 	"sort"
 	"testing"
 
-	core "fvs-v2-core"
-	fvsrepo "fvs2/repo"
+	core "github.com/fvs-lab/core"
+	fvsrepo "github.com/fvs-lab/fvs2/repo"
 	"fvs2d/fvs2dpb"
 )
 
