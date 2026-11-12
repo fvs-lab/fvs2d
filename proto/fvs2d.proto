@@ -145,6 +145,11 @@ message ProbeResponse {
     // work_dir is the configured allowed-root (--root), empty when the
     // daemon has no sandbox configured and serves arbitrary paths.
     optional string work_dir = 12;
+    string mount_backend = 13;
+    string minimum_macos_version = 14;
+    bool mount_backend_available = 15;
+    string mount_diagnostic = 16;
+    bool supports_lazy_unmount = 17;
 }
 
 message CommitSelector {
@@ -165,6 +170,8 @@ message MountSpec {
     optional string upper_path = 3;
     bool debug = 4;
     bool clear_privileged_bits = 5;
+    // FSKit resource directory containing every repository, block store and upper.
+    optional string source_path = 6;
 }
 
 message CreateMountRequest {

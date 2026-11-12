@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -18,8 +19,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hanwen/go-fuse/v2/fs"
-	"github.com/hanwen/go-fuse/v2/fuse"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health"
@@ -49,22 +48,24 @@ var supportedOperations = []string{
 	"CreateMount", "GetMount", "ListMounts", "Unmount", "Shutdown",
 }
 
-// mount is a live FUSE mount tracked by the manager.
+// mount is a live filesystem mount tracked by the manager.
 type mount struct {
-	id       string
-	spec     *fvs2dpb.MountSpec
-	server   *fuse.Server
-	point    string
-	resolved []*fvs2dpb.ResolvedLayer
-	tree     *fsTree
-	upper    string
-	nodes    uint64
-	at       time.Time
-	treeKey  string
+	id          string
+	spec        *fvs2dpb.MountSpec
+	server      mountServer
+	point       string
+	resolved    []*fvs2dpb.ResolvedLayer
+	tree        *Tree
+	upper       string
+	nodeCount   uint64
+	at          time.Time
+	treeKey     string
+	detachMu    sync.Mutex
+	releaseOnce sync.Once
 }
 
 type cachedTree struct {
-	tree *fsTree
+	tree *Tree
 	refs int
 }
 
@@ -73,7 +74,7 @@ func (m *mount) proto() *fvs2dpb.Mount {
 		Id:             m.id,
 		Spec:           m.spec,
 		ResolvedLayers: m.resolved,
-		NodeCount:      m.nodes,
+		NodeCount:      m.nodeCount,
 		MountedAt:      timestamppb.New(m.at),
 	}
 }
@@ -105,10 +106,10 @@ func newMountManager(guard *pathGuard, logf func(format string, args ...any)) *m
 	}
 }
 
-func (mgr *mountManager) acquireTree(layers []resolvedCommit) (string, *fsTree, error) {
+func (mgr *mountManager) acquireTree(layers []Layer) (string, *Tree, error) {
 	keys := make([]string, 0, len(layers))
 	for _, layer := range layers {
-		keys = append(keys, layer.repo+"\x00"+layer.stateID)
+		keys = append(keys, layer.Repository+"\x00"+layer.StateID)
 	}
 	key := strings.Join(keys, "\x1f")
 	mgr.mu.Lock()
@@ -120,7 +121,7 @@ func (mgr *mountManager) acquireTree(layers []resolvedCommit) (string, *fsTree, 
 	}
 	mgr.mu.Unlock()
 
-	tree, err := buildMergedTreeFromRepos(layers, "")
+	tree, err := BuildMergedTreeFromRepos(layers, "")
 	if err != nil {
 		return "", nil, err
 	}
@@ -149,7 +150,7 @@ func (mgr *mountManager) releaseTree(key string) {
 }
 
 func (mgr *mountManager) releaseMountCaches(m *mount) {
-	mgr.releaseTree(m.treeKey)
+	m.releaseOnce.Do(func() { mgr.releaseTree(m.treeKey) })
 }
 
 func newMountID() (string, error) {
@@ -160,24 +161,24 @@ func newMountID() (string, error) {
 	return hex.EncodeToString(b[:]), nil
 }
 
-func selFromLayer(l *fvs2dpb.Layer) layerSel {
-	sel := layerSel{repo: l.GetRepositoryPath()}
+func selFromLayer(l *fvs2dpb.Layer) LayerSelector {
+	sel := LayerSelector{Repository: l.GetRepositoryPath()}
 	switch rev := l.GetRevision().GetSelector().(type) {
 	case *fvs2dpb.CommitSelector_StateIdOrPrefix:
-		sel.state = rev.StateIdOrPrefix
+		sel.State = rev.StateIdOrPrefix
 	case *fvs2dpb.CommitSelector_Branch:
-		sel.branch = rev.Branch
+		sel.Branch = rev.Branch
 	}
 	return sel
 }
 
-func selFromSelector(repoPath string, sel *fvs2dpb.CommitSelector) layerSel {
-	out := layerSel{repo: repoPath}
+func selFromSelector(repoPath string, sel *fvs2dpb.CommitSelector) LayerSelector {
+	out := LayerSelector{Repository: repoPath}
 	switch rev := sel.GetSelector().(type) {
 	case *fvs2dpb.CommitSelector_StateIdOrPrefix:
-		out.state = rev.StateIdOrPrefix
+		out.State = rev.StateIdOrPrefix
 	case *fvs2dpb.CommitSelector_Branch:
-		out.branch = rev.Branch
+		out.Branch = rev.Branch
 	}
 	return out
 }
@@ -199,7 +200,7 @@ func (mgr *mountManager) create(spec *fvs2dpb.MountSpec) (*fvs2dpb.Mount, error)
 		return nil, mapError(err)
 	}
 
-	sels := make([]layerSel, 0, len(spec.GetLayers()))
+	sels := make([]LayerSelector, 0, len(spec.GetLayers()))
 	for _, l := range spec.GetLayers() {
 		if l.GetRepositoryPath() == "" {
 			return nil, status.Error(codes.InvalidArgument, "layer repository_path is required")
@@ -209,15 +210,15 @@ func (mgr *mountManager) create(spec *fvs2dpb.MountSpec) (*fvs2dpb.Mount, error)
 			return nil, mapError(err)
 		}
 		sel := selFromLayer(l)
-		sel.repo = canon
+		sel.Repository = canon
 		sels = append(sels, sel)
 	}
 
-	resolvedCommits := make([]resolvedCommit, 0, len(sels))
+	resolvedCommits := make([]Layer, 0, len(sels))
 	for _, sel := range sels {
-		rc, err := resolveLayer(sel)
+		rc, err := ResolveLayer(sel)
 		if err != nil {
-			return nil, status.Errorf(codes.NotFound, "resolve layer %s: %v", sel.repo, err)
+			return nil, status.Errorf(codes.NotFound, "resolve layer %s: %v", sel.Repository, err)
 		}
 		resolvedCommits = append(resolvedCommits, rc)
 	}
@@ -225,10 +226,10 @@ func (mgr *mountManager) create(spec *fvs2dpb.MountSpec) (*fvs2dpb.Mount, error)
 	resolved := make([]*fvs2dpb.ResolvedLayer, 0, len(resolvedCommits))
 	for _, rc := range resolvedCommits {
 		resolved = append(resolved, &fvs2dpb.ResolvedLayer{
-			RepositoryPath: rc.repo,
-			StateId:        rc.stateID,
-			BlocksPath:     rc.blocks,
-			BlockSize:      uint32(rc.blockSize),
+			RepositoryPath: rc.Repository,
+			StateId:        rc.StateID,
+			BlocksPath:     rc.Blocks,
+			BlockSize:      uint32(rc.BlockSize),
 		})
 	}
 
@@ -255,13 +256,16 @@ func (mgr *mountManager) create(spec *fvs2dpb.MountSpec) (*fvs2dpb.Mount, error)
 		}
 	}
 
-	root := newFuseRootWithOptions(tree, upper, spec.GetClearPrivilegedBits())
-	server, err := fs.Mount(mountPoint, root, &fs.Options{
-		MountOptions:   fuse.MountOptions{Debug: spec.GetDebug(), FsName: "fvs2d", Name: "fvs2d"},
-		RootStableAttr: &fs.StableAttr{Ino: 1, Gen: 1},
-	})
+	source := spec.GetSourcePath()
+	if source != "" {
+		source, err = mgr.guard.check(source)
+		if err != nil {
+			return nil, mapError(err)
+		}
+	}
+	server, err := startMount(mountOptions{Point: mountPoint, Source: source, Tree: tree, Layers: resolvedCommits, Upper: upper, Debug: spec.GetDebug(), ClearPrivilegedBits: spec.GetClearPrivilegedBits()})
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "mount: %v", err)
+		return nil, mapError(fmt.Errorf("mount: %w", err))
 	}
 
 	id, err := newMountID()
@@ -271,22 +275,23 @@ func (mgr *mountManager) create(spec *fvs2dpb.MountSpec) (*fvs2dpb.Mount, error)
 	}
 
 	m := &mount{
-		id:       id,
-		spec:     spec,
-		server:   server,
-		point:    mountPoint,
-		resolved: resolved,
-		tree:     tree,
-		upper:    upper,
-		nodes:    uint64(len(tree.nodes)),
-		at:       time.Now(),
-		treeKey:  treeKey,
+		id:        id,
+		spec:      spec,
+		server:    server,
+		point:     mountPoint,
+		resolved:  resolved,
+		tree:      tree,
+		upper:     upper,
+		nodeCount: uint64(len(tree.Nodes)),
+		at:        time.Now(),
+		treeKey:   treeKey,
 	}
 
 	mgr.mu.Lock()
 	mgr.mounts[id] = m
 	mgr.mu.Unlock()
 	treeHeld = false
+	go func() { server.Wait(); mgr.forgetMount(m) }()
 	debug.FreeOSMemory()
 	return m.proto(), nil
 }
@@ -311,51 +316,65 @@ func (mgr *mountManager) list() []*fvs2dpb.Mount {
 	return out
 }
 
-// detach unmounts a single mount. It must be called without the lock held for
-// the underlying FUSE server, so we remove it from the registry first.
+func (mgr *mountManager) forgetMount(m *mount) {
+	mgr.mu.Lock()
+	if mgr.mounts[m.id] == m {
+		delete(mgr.mounts, m.id)
+	}
+	mgr.mu.Unlock()
+	mgr.releaseMountCaches(m)
+}
+
 func (mgr *mountManager) detach(m *mount, lazy bool) error {
+	if lazy && !runtime.Probe().LazyUnmount {
+		return status.Error(codes.Unimplemented, "this backend does not support lazy unmount")
+	}
 	if lazy {
-		if err := lazyUnmount(m.point); err == nil {
+		if err := platformUnmount(m.point, true); err == nil {
 			return nil
 		}
 	}
 	return m.server.Unmount()
 }
-
 func (mgr *mountManager) unmount(id string, lazy bool) error {
 	mgr.mu.Lock()
 	m, ok := mgr.mounts[id]
-	if ok {
-		delete(mgr.mounts, id)
-	}
 	mgr.mu.Unlock()
 	if !ok {
 		return status.Errorf(codes.NotFound, "no mount with id %q", id)
 	}
-	defer mgr.releaseMountCaches(m)
+	m.detachMu.Lock()
+	defer m.detachMu.Unlock()
+	mgr.mu.Lock()
+	current := mgr.mounts[id] == m
+	mgr.mu.Unlock()
+	if !current {
+		return status.Errorf(codes.NotFound, "no mount with id %q", id)
+	}
 	if err := mgr.detach(m, lazy); err != nil {
+		if status.Code(err) == codes.Unimplemented {
+			return err
+		}
 		return status.Errorf(codes.Internal, "unmount %s: %v", m.point, err)
 	}
+	mgr.forgetMount(m)
 	return nil
 }
-
-// unmountAll detaches every mount; used on shutdown. Failures are logged
-// (not silently discarded) but do not stop the sweep: a stuck mount must not
-// prevent the daemon from unwinding the rest.
-func (mgr *mountManager) unmountAll(lazy bool) {
+func (mgr *mountManager) unmountAll(lazy bool) error {
 	mgr.mu.Lock()
-	all := make([]*mount, 0, len(mgr.mounts))
-	for id, m := range mgr.mounts {
-		all = append(all, m)
-		delete(mgr.mounts, id)
+	ids := make([]string, 0, len(mgr.mounts))
+	for id := range mgr.mounts {
+		ids = append(ids, id)
 	}
 	mgr.mu.Unlock()
-	for _, m := range all {
-		mgr.releaseMountCaches(m)
-		if err := mgr.detach(m, lazy); err != nil {
-			mgr.logf("manager: unmount %s (%s) failed: %v\n", m.id, m.point, err)
+	var failures []error
+	for _, id := range ids {
+		if err := mgr.unmount(id, lazy); err != nil && status.Code(err) != codes.NotFound {
+			mgr.logf("manager: unmount %s failed: %v\n", id, err)
+			failures = append(failures, err)
 		}
 	}
+	return errors.Join(failures...)
 }
 
 // fvs2dService adapts the mountManager to the gRPC Fvs2d service. shutdown is
@@ -375,18 +394,24 @@ func (s *fvs2dService) checkPath(p string) (string, error) {
 }
 
 func (s *fvs2dService) Probe(context.Context, *emptypb.Empty) (*fvs2dpb.ProbeResponse, error) {
+	capabilities := runtime.Probe()
 	resp := &fvs2dpb.ProbeResponse{
-		DaemonVersion:        daemonVersion,
-		Pid:                  uint32(os.Getpid()),
-		StartedAt:            timestamppb.New(s.mgr.started),
-		FuseBackendAvailable: true,
-		DevFuseAccessible:    runtime.DevFuseAccessible(),
-		FusermountAvailable:  runtime.FusermountAvailable(),
-		RunningInFlatpak:     runtime.DetectFlatpak(),
-		ApiVersion:           apiVersion,
-		MinRepoFormat:        uint32(fvsrepo.MinFormat),
-		MaxRepoFormat:        uint32(fvsrepo.CurrentFormat),
-		SupportedOperations:  supportedOperations,
+		MountBackend:          capabilities.Backend,
+		MinimumMacosVersion:   capabilities.MinimumMacOS,
+		MountBackendAvailable: capabilities.Available,
+		MountDiagnostic:       capabilities.Diagnostic,
+		SupportsLazyUnmount:   capabilities.LazyUnmount,
+		DaemonVersion:         daemonVersion,
+		Pid:                   uint32(os.Getpid()),
+		StartedAt:             timestamppb.New(s.mgr.started),
+		FuseBackendAvailable:  capabilities.Backend == "go-fuse",
+		DevFuseAccessible:     runtime.DevFuseAccessible(),
+		FusermountAvailable:   runtime.FusermountAvailable(),
+		RunningInFlatpak:      runtime.DetectFlatpak(),
+		ApiVersion:            apiVersion,
+		MinRepoFormat:         uint32(fvsrepo.MinFormat),
+		MaxRepoFormat:         uint32(fvsrepo.CurrentFormat),
+		SupportedOperations:   supportedOperations,
 	}
 	if s.guard.root != "" {
 		root := s.guard.root
@@ -631,7 +656,7 @@ func (s *fvs2dService) ListFiles(_ context.Context, req *fvs2dpb.ListFilesReques
 		return nil, mapError(err)
 	}
 	sel := selFromSelector(root, req.GetRevision())
-	id, err := fvsrepo.ResolveCommit(root, sel.state, sel.branch)
+	id, err := fvsrepo.ResolveCommit(root, sel.State, sel.Branch)
 	if err != nil {
 		return nil, mapError(err)
 	}
@@ -651,18 +676,18 @@ func (s *fvs2dService) ListFiles(_ context.Context, req *fvs2dpb.ListFilesReques
 
 const defaultGetFileChunkSize = 256 * 1024
 
-func lookupTreePath(t *fsTree, clean string) *fileNode {
+func lookupTreePath(t *Tree, clean string) *Node {
 	if clean == "" {
-		return t.get(1)
+		return t.Get(1)
 	}
 	ino := uint64(1)
 	for _, part := range strings.Split(clean, "/") {
-		ino = t.lookup(ino, part)
+		ino = t.Lookup(ino, part)
 		if ino == 0 {
 			return nil
 		}
 	}
-	return t.get(ino)
+	return t.Get(ino)
 }
 
 func (s *fvs2dService) GetFile(req *fvs2dpb.GetFileRequest, stream fvs2dpb.Fvs2D_GetFileServer) error {
@@ -673,19 +698,18 @@ func (s *fvs2dService) GetFile(req *fvs2dpb.GetFileRequest, stream fvs2dpb.Fvs2D
 	if err != nil {
 		return mapError(err)
 	}
-	rc, err := resolveLayer(selFromSelector(root, req.GetRevision()))
+	rc, err := ResolveLayer(selFromSelector(root, req.GetRevision()))
 	if err != nil {
 		return mapError(err)
 	}
-	blocks := filepath.Join(root, ".fvs2", "blocks")
-	store, err := core.NewDiskBlockStore(blocks)
+	store, err := core.NewDiskBlockStore(rc.Blocks)
 	if err != nil {
 		return mapError(err)
 	}
-	tree := buildTree(store, rc.blockSize, rc.files)
+	tree := BuildTree(store, rc.BlockSize, rc.Files)
 	clean := strings.Trim(path.Clean("/"+req.GetPath()), "/")
 	node := lookupTreePath(tree, clean)
-	if node == nil || node.isDir {
+	if node == nil || node.IsDir {
 		return status.Errorf(codes.NotFound, "file not found: %s", req.GetPath())
 	}
 	chunkSize := int(req.GetChunkSize())
@@ -694,15 +718,15 @@ func (s *fvs2dService) GetFile(req *fvs2dpb.GetFileRequest, stream fvs2dpb.Fvs2D
 	}
 	ctx := stream.Context()
 	var off int64
-	for off < node.size {
+	for off < node.Size {
 		if err := ctx.Err(); err != nil {
 			return mapError(err)
 		}
 		n := chunkSize
-		if remaining := node.size - off; int64(n) > remaining {
+		if remaining := node.Size - off; int64(n) > remaining {
 			n = int(remaining)
 		}
-		data, err := tree.readAt(node, off, n)
+		data, err := tree.ReadAt(node, off, n)
 		if err != nil {
 			return mapError(err)
 		}
@@ -782,7 +806,7 @@ func (s *fvs2dService) Diff(_ context.Context, req *fvs2dpb.DiffRequest) (*fvs2d
 	return &fvs2dpb.DiffResponse{Changes: changes}, nil
 }
 
-func (mgr *mountManager) mountView(id string) (*fsTree, string, error) {
+func (mgr *mountManager) mountView(id string) (*Tree, string, error) {
 	mgr.mu.Lock()
 	defer mgr.mu.Unlock()
 	m, ok := mgr.mounts[id]
@@ -810,18 +834,40 @@ func (s *fvs2dService) DiffMount(_ context.Context, req *fvs2dpb.DiffMountReques
 	return &fvs2dpb.DiffResponse{Changes: changes}, nil
 }
 
-func diffUpperDir(tree *fsTree, upperRoot, rel string, prune bool, out *[]*fvs2dpb.FileChange) error {
+func diffUpperDir(tree *Tree, upperRoot, rel string, prune bool, out *[]*fvs2dpb.FileChange) error {
+	return diffUpperDirView(tree, upperRoot, rel, prune, false, out)
+}
+
+func diffUpperDirView(tree *Tree, upperRoot, rel string, prune, opaqueInherited bool, out *[]*fvs2dpb.FileChange) error {
 	entries, err := os.ReadDir(filepath.Join(upperRoot, filepath.FromSlash(rel)))
 	if err != nil {
 		return err
 	}
+	names := make(map[string]bool, len(entries))
+	for _, entry := range entries {
+		names[entry.Name()] = true
+	}
+	opaque := opaqueInherited || names[".wh..wh..opq"]
+	if opaque {
+		if lower := lookupTreePath(tree, rel); lower != nil && lower.IsDir {
+			for name, ino := range lower.Children {
+				if !names[name] && !names[WhiteoutPrefix+name] {
+					child := tree.Get(ino)
+					*out = append(*out, &fvs2dpb.FileChange{Path: joinRel(rel, name), Kind: fvs2dpb.ChangeKind_CHANGE_KIND_REMOVED, SizeDelta: -child.Size})
+				}
+			}
+		}
+	}
 	for _, entry := range entries {
 		name := entry.Name()
-		if strings.HasPrefix(name, whiteoutPrefix) {
-			real := joinRel(rel, strings.TrimPrefix(name, whiteoutPrefix))
+		if strings.HasPrefix(name, ".wh..wh..") {
+			continue
+		}
+		if strings.HasPrefix(name, WhiteoutPrefix) {
+			real := joinRel(rel, strings.TrimPrefix(name, WhiteoutPrefix))
 			delta := int64(0)
 			if lower := lookupTreePath(tree, real); lower != nil {
-				delta = -lower.size
+				delta = -lower.Size
 			}
 			*out = append(*out, &fvs2dpb.FileChange{Path: real, Kind: fvs2dpb.ChangeKind_CHANGE_KIND_REMOVED, SizeDelta: delta})
 			continue
@@ -832,10 +878,11 @@ func diffUpperDir(tree *fsTree, upperRoot, rel string, prune bool, out *[]*fvs2d
 			return err
 		}
 		if info.IsDir() {
-			if err := diffUpperDir(tree, upperRoot, child, prune, out); err != nil {
+			if err := diffUpperDirView(tree, upperRoot, child, prune, opaque, out); err != nil {
 				return err
 			}
-			if prune {
+			lowerDir := lookupTreePath(tree, child)
+			if prune && !opaque && lowerDir != nil && lowerDir.IsDir && uint32(info.Mode().Perm()) == lowerDir.Mode {
 				children, err := os.ReadDir(filepath.Join(upperRoot, filepath.FromSlash(child)))
 				if err != nil {
 					return err
@@ -854,7 +901,7 @@ func diffUpperDir(tree *fsTree, upperRoot, rel string, prune bool, out *[]*fvs2d
 			return err
 		}
 		if unchanged {
-			if prune {
+			if prune && !opaque {
 				if err := os.Remove(filepath.Join(upperRoot, filepath.FromSlash(child))); err != nil {
 					return err
 				}
@@ -864,37 +911,37 @@ func diffUpperDir(tree *fsTree, upperRoot, rel string, prune bool, out *[]*fvs2d
 		if lower == nil {
 			*out = append(*out, &fvs2dpb.FileChange{Path: child, Kind: fvs2dpb.ChangeKind_CHANGE_KIND_ADDED, SizeDelta: info.Size()})
 		} else {
-			*out = append(*out, &fvs2dpb.FileChange{Path: child, Kind: fvs2dpb.ChangeKind_CHANGE_KIND_MODIFIED, SizeDelta: info.Size() - lower.size})
+			*out = append(*out, &fvs2dpb.FileChange{Path: child, Kind: fvs2dpb.ChangeKind_CHANGE_KIND_MODIFIED, SizeDelta: info.Size() - lower.Size})
 		}
 	}
 	return nil
 }
 
-func entryUnchanged(tree *fsTree, upperRoot, rel string, info os.FileInfo, lower *fileNode) (bool, error) {
-	if lower == nil || lower.isDir {
+func entryUnchanged(tree *Tree, upperRoot, rel string, info os.FileInfo, lower *Node) (bool, error) {
+	if lower == nil || lower.IsDir {
 		return false, nil
 	}
 	upperLink := info.Mode()&os.ModeSymlink != 0
-	if upperLink || lower.link != "" {
-		if !upperLink || lower.link == "" {
+	if upperLink || lower.Link != "" {
+		if !upperLink || lower.Link == "" {
 			return false, nil
 		}
 		target, err := os.Readlink(filepath.Join(upperRoot, filepath.FromSlash(rel)))
 		if err != nil {
 			return false, err
 		}
-		return target == lower.link, nil
+		return target == lower.Link, nil
 	}
 	if !info.Mode().IsRegular() {
 		return false, nil
 	}
-	if info.Size() != lower.size || uint32(info.Mode().Perm()) != lower.mode {
+	if info.Size() != lower.Size || uint32(info.Mode().Perm()) != lower.Mode {
 		return false, nil
 	}
 	return sameContent(tree, filepath.Join(upperRoot, filepath.FromSlash(rel)), lower)
 }
 
-func sameContent(tree *fsTree, upperPath string, n *fileNode) (bool, error) {
+func sameContent(tree *Tree, upperPath string, n *Node) (bool, error) {
 	f, err := os.Open(upperPath)
 	if err != nil {
 		return false, err
@@ -903,12 +950,12 @@ func sameContent(tree *fsTree, upperPath string, n *fileNode) (bool, error) {
 	const chunk = 1 << 20
 	buf := make([]byte, chunk)
 	var off int64
-	for off < n.size {
+	for off < n.Size {
 		want := chunk
-		if remaining := n.size - off; remaining < int64(chunk) {
+		if remaining := n.Size - off; remaining < int64(chunk) {
 			want = int(remaining)
 		}
-		lower, err := tree.readAt(n, off, want)
+		lower, err := tree.ReadAt(n, off, want)
 		if err != nil {
 			return false, err
 		}
@@ -956,7 +1003,14 @@ func (s *fvs2dService) Unmount(_ context.Context, req *fvs2dpb.UnmountRequest) (
 }
 
 func (s *fvs2dService) Shutdown(_ context.Context, req *fvs2dpb.ShutdownRequest) (*emptypb.Empty, error) {
-	s.shutdown(req.GetMode() == fvs2dpb.UnmountMode_UNMOUNT_MODE_LAZY)
+	lazy := req.GetMode() == fvs2dpb.UnmountMode_UNMOUNT_MODE_LAZY
+	if lazy && !runtime.Probe().LazyUnmount {
+		return nil, status.Error(codes.Unimplemented, "this backend does not support lazy unmount")
+	}
+	if err := s.mgr.unmountAll(lazy); err != nil {
+		return nil, err
+	}
+	s.shutdown(lazy)
 	return &emptypb.Empty{}, nil
 }
 

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+    <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+    <key>CFBundleSupportedPlatforms</key><array><string>MacOSX</string></array>
+    <key>CFBundleIdentifier</key><string>lab.fvs.FVS.FS</string>
+    <key>CFBundleExecutable</key><string>FVS</string>
+    <key>CFBundleName</key><string>FVS</string>
+    <key>CFBundleDisplayName</key><string>FVS</string>
+    <key>CFBundlePackageType</key><string>XPC!</string>
+    <key>CFBundleShortVersionString</key><string>0.1.0</string>
+    <key>CFBundleVersion</key><string>1</string>
+    <key>LSMinimumSystemVersion</key><string>26.0</string>
+    <key>EXAppExtensionAttributes</key><dict>
+        <key>EXExtensionPointIdentifier</key><string>com.apple.fskit.fsmodule</string>
+        <key>FSShortName</key><string>fvs</string>
+        <key>FSSupportsBlockResources</key><false/>
+        <key>FSSupportsPathURLs</key><true/>
+        <key>FSRequiresSecurityScopedPathURLResources</key><true/>
+        <key>FSMediaTypes</key><dict/>
+        <key>FSPersonalities</key><dict/>
+    </dict>
+</dict></plist>

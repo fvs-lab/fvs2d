@@ -1,4 +1,4 @@
-package main
+package engine
 
 import (
 	"bytes"
@@ -21,19 +21,19 @@ func (m memStore) Get(id core.BlockID) ([]byte, error) {
 
 func TestBuildTreePreservesDirectoryAndFIFO(t *testing.T) {
 	store := memStore{}
-	tree := buildTree(store, 4096, []fvsrepo.FileEntry{
+	tree := BuildTree(store, 4096, []fvsrepo.FileEntry{
 		{Path: "run", Kind: "dir", Mode: 0o750},
 		{Path: "run/control", Kind: "fifo", Mode: 0o620},
 	})
-	dir := tree.get(tree.lookup(1, "run"))
-	if dir == nil || !dir.isDir || dir.mode != 0o750 {
+	dir := tree.Get(tree.Lookup(1, "run"))
+	if dir == nil || !dir.IsDir || dir.Mode != 0o750 {
 		t.Fatalf("directory = %+v", dir)
 	}
-	fifo := tree.get(tree.lookup(dir.ino, "control"))
-	if fifo == nil || fifo.kind != "fifo" {
+	fifo := tree.Get(tree.Lookup(dir.Ino, "control"))
+	if fifo == nil || fifo.Kind != "fifo" {
 		t.Fatalf("fifo = %+v", fifo)
 	}
-	if got := (pathInfo{lower: fifo}).mode(); got != syscall.S_IFIFO|0o620 {
+	if got := (pathInfo{lower: fifo}).Mode(); got != syscall.S_IFIFO|0o620 {
 		t.Fatalf("fifo mode = %#o", got)
 	}
 }
@@ -60,7 +60,7 @@ func TestReadAtVariableChunks(t *testing.T) {
 		full = append(full, p...)
 	}
 
-	tree := buildTree(store, 4096, []fvsrepo.FileEntry{{
+	tree := BuildTree(store, 4096, []fvsrepo.FileEntry{{
 		Path:       "f",
 		Mode:       0o644,
 		Size:       int64(len(full)),
@@ -68,12 +68,12 @@ func TestReadAtVariableChunks(t *testing.T) {
 		BlockSizes: sizes,
 	}})
 
-	ino := tree.lookup(1, "f")
+	ino := tree.Lookup(1, "f")
 	if ino == 0 {
 		t.Fatal("file not found in tree")
 	}
-	n := tree.get(ino)
-	if n.offsets == nil {
+	n := tree.Get(ino)
+	if n.Offsets == nil {
 		t.Fatal("variable-size file did not get offsets")
 	}
 
@@ -91,7 +91,7 @@ func TestReadAtVariableChunks(t *testing.T) {
 		{3, 9, "3456789ab"},              // spans all three blocks
 	}
 	for _, c := range cases {
-		got, err := tree.readAt(n, c.off, c.length)
+		got, err := tree.ReadAt(n, c.off, c.length)
 		if err != nil {
 			t.Fatalf("readAt(%d,%d): %v", c.off, c.length, err)
 		}
@@ -101,7 +101,7 @@ func TestReadAtVariableChunks(t *testing.T) {
 	}
 
 	// Out-of-range reads stay empty, not errors.
-	if got, err := tree.readAt(n, int64(len(full)), 5); err != nil || len(got) != 0 {
+	if got, err := tree.ReadAt(n, int64(len(full)), 5); err != nil || len(got) != 0 {
 		t.Fatalf("read past EOF: %q %v", got, err)
 	}
 }
@@ -119,7 +119,7 @@ func TestReadAtFixedStillWorks(t *testing.T) {
 		blocks = append(blocks, store.put(data[i:end]))
 	}
 
-	tree := buildTree(store, bs, []fvsrepo.FileEntry{{
+	tree := BuildTree(store, bs, []fvsrepo.FileEntry{{
 		Path:   "f",
 		Mode:   0o644,
 		Size:   int64(len(data)),
@@ -127,11 +127,11 @@ func TestReadAtFixedStillWorks(t *testing.T) {
 		// No BlockSizes: legacy fixed-size layout.
 	}})
 
-	n := tree.get(tree.lookup(1, "f"))
-	if n.offsets != nil {
+	n := tree.Get(tree.Lookup(1, "f"))
+	if n.Offsets != nil {
 		t.Fatal("fixed-size file must not get offsets")
 	}
-	got, err := tree.readAt(n, 2, 9)
+	got, err := tree.ReadAt(n, 2, 9)
 	if err != nil {
 		t.Fatal(err)
 	}

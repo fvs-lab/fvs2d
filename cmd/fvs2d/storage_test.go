@@ -15,17 +15,17 @@ func TestMergedTreeMemory(t *testing.T) {
 	if len(paths) == 0 {
 		t.Skip("FVS2D_BENCHMARK_LAYERS is not set")
 	}
-	layers := make([]resolvedCommit, 0, len(paths))
+	layers := make([]Layer, 0, len(paths))
 	files := 0
 	blocks := 0
 	uniqueBlocks := map[string]struct{}{}
 	for _, repository := range paths {
-		layer, err := resolveLayer(layerSel{repo: repository})
+		layer, err := ResolveLayer(LayerSelector{Repository: repository})
 		if err != nil {
 			t.Fatal(err)
 		}
-		files += len(layer.files)
-		for _, file := range layer.files {
+		files += len(layer.Files)
+		for _, file := range layer.Files {
 			blocks += len(file.Blocks)
 			for _, block := range file.Blocks {
 				uniqueBlocks[string(block)] = struct{}{}
@@ -36,7 +36,7 @@ func TestMergedTreeMemory(t *testing.T) {
 	runtime.GC()
 	var before runtime.MemStats
 	runtime.ReadMemStats(&before)
-	tree, err := buildMergedTreeFromRepos(layers, "")
+	tree, err := BuildMergedTreeFromRepos(layers, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,14 +46,14 @@ func TestMergedTreeMemory(t *testing.T) {
 	runtime.ReadMemStats(&after)
 	heap := int64(after.HeapAlloc) - int64(before.HeapAlloc)
 	inuse := int64(after.HeapInuse) - int64(before.HeapInuse)
-	t.Logf("files=%d blocks=%d unique=%d nodes=%d heap=%d inuse=%d", files, blocks, len(uniqueBlocks), len(tree.nodes), heap, inuse)
+	t.Logf("files=%d blocks=%d unique=%d nodes=%d heap=%d inuse=%d", files, blocks, len(uniqueBlocks), len(tree.Nodes), heap, inuse)
 }
 
 func TestMergedTreeReadsSharedBlockStore(t *testing.T) {
 	root := t.TempDir()
 	blocks := filepath.Join(root, "blocks")
 	content := []byte("shared")
-	var layers []resolvedCommit
+	var layers []Layer
 	for _, name := range []string{"lower", "upper"} {
 		repository, err := fvsrepo.InitWithOptions(filepath.Join(root, name), fvsrepo.InitOptions{BlocksPath: blocks})
 		if err != nil {
@@ -70,25 +70,25 @@ func TestMergedTreeReadsSharedBlockStore(t *testing.T) {
 		if _, err := writer.Commit(); err != nil {
 			t.Fatal(err)
 		}
-		layer, err := resolveLayer(layerSel{repo: repository.Path})
+		layer, err := ResolveLayer(LayerSelector{Repository: repository.Path})
 		if err != nil {
 			t.Fatal(err)
 		}
-		if layer.blocks != blocks {
-			t.Fatalf("blocks = %q, want %q", layer.blocks, blocks)
+		if layer.Blocks != blocks {
+			t.Fatalf("blocks = %q, want %q", layer.Blocks, blocks)
 		}
 		layers = append(layers, layer)
 	}
 
-	tree, err := buildMergedTreeFromRepos(layers, "")
+	tree, err := BuildMergedTreeFromRepos(layers, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	usr := tree.get(tree.lookup(1, "usr"))
-	share := tree.get(tree.lookup(usr.ino, "share"))
+	usr := tree.Get(tree.Lookup(1, "usr"))
+	share := tree.Get(tree.Lookup(usr.Ino, "share"))
 	for _, name := range []string{"lower", "upper"} {
-		node := tree.get(tree.lookup(share.ino, name))
-		got, err := tree.readAt(node, 0, len(content))
+		node := tree.Get(tree.Lookup(share.Ino, name))
+		got, err := tree.ReadAt(node, 0, len(content))
 		if err != nil || !bytes.Equal(got, content) {
 			t.Fatalf("read %s = %q, %v", name, got, err)
 		}
@@ -96,33 +96,33 @@ func TestMergedTreeReadsSharedBlockStore(t *testing.T) {
 }
 
 func TestMergedTreeAppliesDirectoryWhiteouts(t *testing.T) {
-	lower := resolvedCommit{blockSize: 4096, files: []fvsrepo.FileEntry{
+	lower := Layer{BlockSize: 4096, Files: []fvsrepo.FileEntry{
 		{Path: "app/cache/a", Mode: 0o644},
 		{Path: "app/cache/nested/b", Mode: 0o644},
 	}}
-	upper := resolvedCommit{blockSize: 4096, files: []fvsrepo.FileEntry{
+	upper := Layer{BlockSize: 4096, Files: []fvsrepo.FileEntry{
 		{Path: "app/.wh.cache", Mode: 0o644},
 		{Path: "app/new", Mode: 0o644},
 	}}
-	tree, err := buildMergedTreeFromRepos([]resolvedCommit{lower, upper}, t.TempDir())
+	tree, err := BuildMergedTreeFromRepos([]Layer{lower, upper}, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	app := tree.get(tree.lookup(1, "app"))
+	app := tree.Get(tree.Lookup(1, "app"))
 	if app == nil {
 		t.Fatal("app directory is missing")
 	}
-	if tree.lookup(app.ino, "cache") != 0 {
+	if tree.Lookup(app.Ino, "cache") != 0 {
 		t.Fatal("whiteout left the lower directory visible")
 	}
-	if tree.lookup(app.ino, "new") == 0 {
+	if tree.Lookup(app.Ino, "new") == 0 {
 		t.Fatal("upper file is missing")
 	}
 }
 
 func TestMountManagerSharesIdenticalTrees(t *testing.T) {
 	mgr := newMountManager(nil, nil)
-	layers := []resolvedCommit{{blocks: t.TempDir(), blockSize: 4096}}
+	layers := []Layer{{Blocks: t.TempDir(), BlockSize: 4096}}
 	key, first, err := mgr.acquireTree(layers)
 	if err != nil {
 		t.Fatal(err)

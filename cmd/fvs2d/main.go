@@ -4,13 +4,9 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"os/exec"
 	"os/signal"
 	"strings"
 	"syscall"
-
-	"github.com/hanwen/go-fuse/v2/fs"
-	"github.com/hanwen/go-fuse/v2/fuse"
 
 	"github.com/fvs-lab/fvs2d/internal/runtime"
 )
@@ -23,22 +19,15 @@ func (s *stringList) Set(v string) error {
 	return nil
 }
 
-func lazyUnmount(mountPoint string) error {
-	for _, command := range []string{"fusermount3", "fusermount"} {
-		if path, err := exec.LookPath(command); err == nil {
-			return exec.Command(path, "-uz", mountPoint).Run()
-		}
-	}
-	return fmt.Errorf("fusermount not found")
-}
-
 func run() error {
 	var mountPoint, blocksDir, repoDir, stateSel, branchSel, upperDir, controlAddr string
-	var rootDir, token string
+	var rootDir, token, sourcePath, unmountPoint string
 	var lowers stringList
 	var debug, probe, insecureTCP bool
 	var blockSize int
 
+	flag.StringVar(&sourcePath, "source", "", "FSKit resource directory containing all layers, blocks and upper (macOS)")
+	flag.StringVar(&unmountPoint, "unmount", "", "unmount a mount point and exit")
 	flag.StringVar(&mountPoint, "mount", "", "mountpoint")
 	flag.StringVar(&repoDir, "repo", ".", "repo root containing .fvs2")
 	flag.StringVar(&stateSel, "state", "", "state id/prefix to mount (default: HEAD)")
@@ -56,13 +45,27 @@ func run() error {
 	flag.Parse()
 	_ = blockSize
 
+	if unmountPoint != "" {
+		return platformUnmount(unmountPoint, false)
+	}
+	capabilities := runtime.Probe()
 	flatpak := runtime.DetectFlatpak()
 	devFuse := runtime.DevFuseAccessible()
 	fmount := runtime.FusermountAvailable()
 	if probe {
+		fmt.Printf("mount_backend=%s\nmount_backend_available=%v\nminimum_macos_version=%s\nsupports_lazy_unmount=%v\ndiagnostic=%s\n", capabilities.Backend, capabilities.Available, capabilities.MinimumMacOS, capabilities.LazyUnmount, capabilities.Diagnostic)
 		fmt.Printf("flatpak=%v\n", flatpak)
 		fmt.Printf("dev_fuse_accessible=%v\n", devFuse)
 		fmt.Printf("fusermount_available=%v\n", fmount)
+		if controlAddr != "" {
+			remote, err := probeManager(controlAddr, token)
+			if err != nil {
+				fmt.Println("manager_available=false")
+				return err
+			}
+			fmt.Printf("manager_available=true\nmanager_mount_backend=%s\nmanager_mount_backend_available=%v\nmanager_diagnostic=%s\n", remote.GetMountBackend(), remote.GetMountBackendAvailable(), remote.GetMountDiagnostic())
+		}
+
 		return nil
 	}
 	// Manager mode: with no initial mount, serve the Fvs2d mount-manager over
@@ -76,31 +79,42 @@ func run() error {
 	if controlAddr != "" {
 		return fmt.Errorf("--control cannot be combined with --mount; run the manager without --mount")
 	}
-	if !devFuse || !fmount {
-		return fmt.Errorf("cannot mount (dev_fuse_accessible=%v fusermount_available=%v)", devFuse, fmount)
+	if !capabilities.Available {
+		return fmt.Errorf("cannot mount: %s", capabilities.Diagnostic)
 	}
 
-	var tree *fsTree
+	var tree *Tree
+	var resolved []Layer
 	var err error
 	if len(lowers) > 0 {
-		sels := make([]layerSel, 0, len(lowers))
+		sels := make([]LayerSelector, 0, len(lowers))
 		for _, layer := range lowers {
-			sels = append(sels, parseLayerSel(layer))
+			sels = append(sels, ParseLayerSelector(layer))
 		}
-		resolved := make([]resolvedCommit, 0, len(sels))
+		resolved = make([]Layer, 0, len(sels))
 		for _, sel := range sels {
-			rc, rerr := resolveLayer(sel)
+			rc, rerr := ResolveLayer(sel)
 			if rerr != nil {
-				return fmt.Errorf("layer %s: %w", sel.repo, rerr)
+				return fmt.Errorf("layer %s: %w", sel.Repository, rerr)
 			}
 			resolved = append(resolved, rc)
 		}
-		tree, err = buildMergedTreeFromRepos(resolved, blocksDir)
+		tree, err = BuildMergedTreeFromRepos(resolved, blocksDir)
 	} else {
-		tree, err = buildTreeFromRepo(repoDir, stateSel, branchSel, blocksDir)
+		var layer Layer
+		layer, err = ResolveLayer(LayerSelector{Repository: repoDir, State: stateSel, Branch: branchSel})
+		if err == nil {
+			resolved = []Layer{layer}
+			tree, err = BuildMergedTreeFromRepos(resolved, blocksDir)
+		}
 	}
 	if err != nil {
 		return err
+	}
+	if blocksDir != "" {
+		for i := range resolved {
+			resolved[i].Blocks = blocksDir
+		}
 	}
 	if upperDir != "" {
 		if err := os.MkdirAll(upperDir, 0o755); err != nil {
@@ -108,11 +122,7 @@ func run() error {
 		}
 	}
 
-	root := newFuseRoot(tree, upperDir)
-	server, err := fs.Mount(mountPoint, root, &fs.Options{
-		MountOptions:   fuse.MountOptions{Debug: debug, FsName: "fvs2d", Name: "fvs2d"},
-		RootStableAttr: &fs.StableAttr{Ino: 1, Gen: 1},
-	})
+	server, err := startMount(mountOptions{Point: mountPoint, Source: sourcePath, Tree: tree, Layers: resolved, Upper: upperDir, Debug: debug})
 	if err != nil {
 		return fmt.Errorf("mount: %w", err)
 	}
@@ -172,11 +182,17 @@ func runManager(addr, rootDir string, cfg serverConfig) error {
 
 	select {
 	case <-sigCh:
-		mgr.unmountAll(false)
+		err := mgr.unmountAll(false)
 		server.Stop()
+		if err != nil {
+			return err
+		}
 	case lazy := <-shutdownReq:
-		mgr.unmountAll(lazy)
+		err := mgr.unmountAll(lazy)
 		server.GracefulStop()
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }

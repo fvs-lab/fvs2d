@@ -1,0 +1,53 @@
+name: Real FSKit mount
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  macos-mount:
+    runs-on: [self-hosted, macOS, fvs-fskit]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: fvs2d
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: fvs-lab/fvs2
+          path: fvs2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: fvs-lab/core
+          path: core
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version: '1.26.9'
+          cache-dependency-path: '**/go.sum'
+      - name: Build and install signed current sources
+        env:
+          SIGN_IDENTITY: ${{ vars.FVS_SIGN_IDENTITY }}
+          EXTENSION_PROFILE: ${{ vars.FVS_EXTENSION_PROFILE_PATH }}
+        run: |
+          test -n "$SIGN_IDENTITY"
+          if [[ -n "$EXTENSION_PROFILE" ]]; then test -f "$EXTENSION_PROFILE"; fi
+          work="$HOME/artifacts/fvs-fskit-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          mkdir -p "$work/temporary" "$HOME/Applications"
+          export TMPDIR="$work/temporary" TMP="$work/temporary" TEMP="$work/temporary"
+          go work init ./core ./fvs2 ./fvs2d
+          OUT="$work/app" fvs2d/macos/build.sh
+          go build -trimpath -o "$work/fvs2" ./fvs2/cmd/fvs2
+          ditto "$work/app/FVS.app" "$HOME/Applications/FVS.app"
+          open -g "$HOME/Applications/FVS.app" --args --register-only
+          echo "FVS_BUILD_DIR=$work" >> "$GITHUB_ENV"
+      - name: Real FSKit mount tests
+        run: |
+          daemon="$HOME/Applications/FVS.app/Contents/MacOS/fvs2d"
+          "$daemon" -probe
+          FVS2D_TEST_REAL_MOUNT=1 go test ./fvs2d/cmd/fvs2d -run TestManagerRealMountLifecycle -count=1
+          python3 fvs2d/macos/integration.py --daemon "$daemon" --fvs2 "$FVS_BUILD_DIR/fvs2" --work-dir "$FVS_BUILD_DIR/mount-tests"
+      - name: Upload mount measurements
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: real-fskit-mount-results
+          path: ${{ env.FVS_BUILD_DIR }}/mount-tests/results.json
+          if-no-files-found: warn
