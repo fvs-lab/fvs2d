@@ -1,9 +1,10 @@
 # macOS FSKit backend
 
-The native adapter is implemented, but its Swift build, signing and real macOS
-mount path have not been executed in the Linux development environment. Treat
-this backend as experimental until the signed mount tests below pass on a Mac.
-Linux mounts and the Go/C bridge have been exercised separately.
+The unsigned app and extension compile on macOS 26 ARM in CI. Go race tests
+and the C archive executable test pass there too. Signing and the real macOS
+mount path remain unverified. Treat this backend as experimental until the
+signed mount tests below pass on a prepared Mac. Linux mounts have been
+exercised separately.
 
 ## Requirements
 
@@ -273,5 +274,9 @@ first three-byte read, 115-125 MiB/s for a warm sequential hash pass, random-rea
 medians of 203-230 us (p95 621-671 us), and about 15 MB initial daemon RSS.
 The final C ABI upper 4 KiB test measured about 2.1 us/read (10,000 calls).
 Earlier C ABI samples ranged from 0.8 to 7.7 us/read with machine load. These are development-machine samples,
-not macOS or cold-cache performance claims. Swift compilation, signing,
-notarization, Finder and actual FSKit mounts remain unverified.
+not macOS or cold-cache performance claims. The
+[macOS CI run](https://github.com/fvs-lab/fvs2d/actions/runs/43210344505)
+compiled the unsigned app and extension and passed Go race tests, vet and the
+C archive executable test. Its downloaded archive passed SHA-256, bundle
+metadata and ARM64 executable checks. Signing, notarization, Finder and
+actual FSKit mounts remain unverified.
