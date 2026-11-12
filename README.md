@@ -14,7 +14,15 @@ whiteout marker removes it. An optional writable upper layer turns the mount
 into a union filesystem: creates, writes, deletes and copy-ups land in a plain
 directory that is itself ready to commit as a new state.
 
-## Build
+## macOS
+
+An experimental native Apple FSKit adapter is included for macOS 26.0 or later.
+It shares the Go filesystem engine with Linux and uses an app extension without
+a kernel backend. The signed native mount path still requires verification on
+a Mac. Build, installation, authorization and test commands are in
+[docs/MACOS.md](docs/MACOS.md).
+
+## Build on Linux
 
 The daemon uses the pure-Go
 [go-fuse](https://github.com/hanwen/go-fuse) client. Only the runtime `fusermount3` helper and `/dev/fuse` are needed.

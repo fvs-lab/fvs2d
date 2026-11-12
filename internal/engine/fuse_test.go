@@ -1,4 +1,6 @@
-package main
+//go:build linux
+
+package engine
 
 import (
 	"context"
@@ -18,8 +20,8 @@ func TestFuseNodeCopyUpAndWhiteout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tree := buildTree(store, 4096, []fvsrepo.FileEntry{{Path: "file", Mode: 0o644, Size: 5, Blocks: []core.BlockID{id}}})
-	root := newFuseRoot(tree, t.TempDir())
+	tree := BuildTree(store, 4096, []fvsrepo.FileEntry{{Path: "file", Mode: 0o644, Size: 5, Blocks: []core.BlockID{id}}})
+	root := NewFuseRoot(tree, t.TempDir())
 	_ = fs.NewNodeFS(root, &fs.Options{RootStableAttr: &fs.StableAttr{Ino: 1}})
 
 	child, errno := root.Lookup(context.Background(), "file", &fuse.EntryOut{})
@@ -35,13 +37,13 @@ func TestFuseNodeCopyUpAndWhiteout(t *testing.T) {
 		t.Fatalf("write: %v", errno)
 	}
 	_ = fh.(fs.FileReleaser).Release(context.Background())
-	if got, err := os.ReadFile(root.state.upperPath("file")); err != nil || string(got) != "UPwer" {
+	if got, err := os.ReadFile(root.State.upperPath("file")); err != nil || string(got) != "UPwer" {
 		t.Fatalf("copy-up = %q, %v", got, err)
 	}
 	if errno := root.Unlink(context.Background(), "file"); errno != 0 {
 		t.Fatalf("unlink: %v", errno)
 	}
-	if root.state.stat("file").exists() {
+	if root.State.stat("file").exists() {
 		t.Fatal("whiteout did not hide lower file")
 	}
 }
@@ -52,8 +54,8 @@ func TestFuseNodeSetattrRestoresWritePermission(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tree := buildTree(store, 4096, []fvsrepo.FileEntry{{Path: "file", Mode: 0o644, Size: 5, Blocks: []core.BlockID{id}}})
-	root := newFuseRoot(tree, t.TempDir())
+	tree := BuildTree(store, 4096, []fvsrepo.FileEntry{{Path: "file", Mode: 0o644, Size: 5, Blocks: []core.BlockID{id}}})
+	root := NewFuseRoot(tree, t.TempDir())
 	_ = fs.NewNodeFS(root, &fs.Options{RootStableAttr: &fs.StableAttr{Ino: 1}})
 
 	child, errno := root.Lookup(context.Background(), "file", &fuse.EntryOut{})
@@ -67,7 +69,7 @@ func TestFuseNodeSetattrRestoresWritePermission(t *testing.T) {
 			t.Fatalf("chmod %o: %v", mode, errno)
 		}
 	}
-	info, err := os.Stat(root.state.upperPath("file"))
+	info, err := os.Stat(root.State.upperPath("file"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,8 +79,8 @@ func TestFuseNodeSetattrRestoresWritePermission(t *testing.T) {
 }
 
 func TestFuseViewCanClearPrivilegedBits(t *testing.T) {
-	tree := buildTree(core.NewMemBlockStore(), 4096, []fvsrepo.FileEntry{{Path: "helper", Mode: 0o6755}})
-	root := newFuseRootWithOptions(tree, "", true)
+	tree := BuildTree(core.NewMemBlockStore(), 4096, []fvsrepo.FileEntry{{Path: "helper", Mode: 0o6755}})
+	root := NewFuseRootWithOptions(tree, "", true)
 	_ = fs.NewNodeFS(root, &fs.Options{RootStableAttr: &fs.StableAttr{Ino: 1}})
 
 	entry := &fuse.EntryOut{}
@@ -92,8 +94,8 @@ func TestFuseViewCanClearPrivilegedBits(t *testing.T) {
 
 func TestFuseNodeReplacesLowerSymlink(t *testing.T) {
 	store := core.NewMemBlockStore()
-	tree := buildTree(store, 4096, []fvsrepo.FileEntry{{Path: "pfx", Link: "."}})
-	root := newFuseRoot(tree, t.TempDir())
+	tree := BuildTree(store, 4096, []fvsrepo.FileEntry{{Path: "pfx", Link: "."}})
+	root := NewFuseRoot(tree, t.TempDir())
 	_ = fs.NewNodeFS(root, &fs.Options{RootStableAttr: &fs.StableAttr{Ino: 1}})
 
 	if errno := root.Unlink(context.Background(), "pfx"); errno != 0 {
@@ -102,10 +104,10 @@ func TestFuseNodeReplacesLowerSymlink(t *testing.T) {
 	if _, errno := root.Symlink(context.Background(), ".", "pfx", &fuse.EntryOut{}); errno != 0 {
 		t.Fatalf("symlink: %v", errno)
 	}
-	if got, err := os.Readlink(root.state.upperPath("pfx")); err != nil || got != "." {
+	if got, err := os.Readlink(root.State.upperPath("pfx")); err != nil || got != "." {
 		t.Fatalf("readlink = %q, %v", got, err)
 	}
-	if root.state.hasWhiteout("", "pfx") {
+	if root.State.hasWhiteout("", "pfx") {
 		t.Fatal("symlink did not clear whiteout")
 	}
 }

@@ -1,3 +1,5 @@
+//go:build linux
+
 package runtime
 
 import (
@@ -32,4 +34,13 @@ func FusermountAvailable() bool {
 		}
 	}
 	return false
+}
+
+func Probe() Capabilities {
+	available := DevFuseAccessible() && FusermountAvailable()
+	diagnostic := ""
+	if !available {
+		diagnostic = "Linux mount requires accessible /dev/fuse and fusermount3"
+	}
+	return Capabilities{Backend: "go-fuse", Available: available, LazyUnmount: true, Diagnostic: diagnostic}
 }

@@ -22,7 +22,7 @@ func put(t *testing.T, store *core.MemBlockStore, b string) core.BlockID {
 
 func TestDiffUpperDirReportsOnlyRealChanges(t *testing.T) {
 	store := core.NewMemBlockStore()
-	tree := buildTree(store, 4096, []fvsrepo.FileEntry{
+	tree := BuildTree(store, 4096, []fvsrepo.FileEntry{
 		{Path: "keep.txt", Mode: 0o644, Size: 4, Blocks: []core.BlockID{put(t, store, "same")}},
 		{Path: "mod.txt", Mode: 0o644, Size: 3, Blocks: []core.BlockID{put(t, store, "old")}},
 		{Path: "gone.txt", Mode: 0o644, Size: 6, Blocks: []core.BlockID{put(t, store, "byebye")}},
@@ -39,7 +39,7 @@ func TestDiffUpperDirReportsOnlyRealChanges(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(upper, "added.txt"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(upper, whiteoutPrefix+"gone.txt"), nil, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(upper, WhiteoutPrefix+"gone.txt"), nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Symlink("target", filepath.Join(upper, "link")); err != nil {
@@ -72,6 +72,36 @@ func TestDiffUpperDirReportsOnlyRealChanges(t *testing.T) {
 	for _, name := range []string{"keep.txt", "link"} {
 		if _, err := os.Lstat(filepath.Join(upper, name)); !os.IsNotExist(err) {
 			t.Fatalf("unchanged %q was not pruned: %v", name, err)
+		}
+	}
+}
+
+func TestDiffUpperIgnoresInternalMarkersAndKeepsOpaqueData(t *testing.T) {
+	store := core.NewMemBlockStore()
+	id := put(t, store, "same")
+	tree := BuildTree(store, 4096, []fvsrepo.FileEntry{{Path: "dir/kept", Mode: 0o644, Size: 4, Blocks: []core.BlockID{id}}, {Path: "dir/hidden", Mode: 0o644, Size: 4, Blocks: []core.BlockID{id}}})
+	upper := t.TempDir()
+	if err := os.Mkdir(filepath.Join(upper, "dir"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{".wh..wh..fvs-lock", "dir/.wh..wh..opq"} {
+		if err := os.WriteFile(filepath.Join(upper, name), nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(upper, "dir/kept"), []byte("same"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var changes []*fvs2dpb.FileChange
+	if err := diffUpperDir(tree, upper, "", true, &changes); err != nil {
+		t.Fatal(err)
+	}
+	if len(changes) != 1 || changes[0].Path != "dir/hidden" || changes[0].Kind != fvs2dpb.ChangeKind_CHANGE_KIND_REMOVED {
+		t.Fatalf("opaque diff: %v", changes)
+	}
+	for _, name := range []string{".wh..wh..fvs-lock", "dir/kept"} {
+		if _, err := os.Stat(filepath.Join(upper, name)); err != nil {
+			t.Fatalf("pruned required entry %s: %v", name, err)
 		}
 	}
 }

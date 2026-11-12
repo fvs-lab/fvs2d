@@ -3,6 +3,9 @@ package main
 import (
 	"context"
 	"errors"
+	core "github.com/fvs-lab/core"
+	"io/fs"
+	"syscall"
 
 	fvsrepo "github.com/fvs-lab/fvs2/repo"
 
@@ -35,6 +38,18 @@ func mapError(err error) error {
 		return status.Error(codes.NotFound, err.Error())
 	case errors.Is(err, fvsrepo.ErrLockTimeout):
 		return status.Error(codes.Aborted, err.Error())
+	case errors.Is(err, syscall.EACCES) || errors.Is(err, syscall.EPERM):
+		return status.Error(codes.PermissionDenied, err.Error())
+	case errors.Is(err, syscall.EINVAL):
+		return status.Error(codes.InvalidArgument, err.Error())
+	case errors.Is(err, syscall.ENOTSUP):
+		return status.Error(codes.Unimplemented, err.Error())
+	case errors.Is(err, syscall.EBUSY):
+		return status.Error(codes.FailedPrecondition, err.Error())
+	case errors.Is(err, core.ErrBlockCorrupt):
+		return status.Error(codes.DataLoss, err.Error())
+	case errors.Is(err, core.ErrBlockNotFound) || errors.Is(err, fs.ErrNotExist):
+		return status.Error(codes.NotFound, err.Error())
 	case errors.Is(err, fvsrepo.ErrFormatUnsupported):
 		return status.Error(codes.FailedPrecondition, err.Error())
 	default:
